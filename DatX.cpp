@@ -91,24 +91,24 @@ DatX& DatX::Put(const char* szKey, unsigned int nBin, void* pBin)
 DatX& DatX::__Put(const char* szKey, unsigned int nBin, void* pBin)
 {
 #if 1 // 暂时废弃__type__，使之支持混杂数组，后续看是否有必要开启
-	__type__ = '?';
+    __type__ = '?';
 #else
-	if (szKey == nullptr || szKey[0] == 0)
-	{ // Add
-		if (__type__ != 'V' && __type__ != '?')
-		{
-			return *(DatX*)nullptr; // 强制程序崩溃
-		}
-		__type__ = 'V';
-	}
-	else
-	{ // Put
-		if (__type__ != 'K' && __type__ != '?')
-		{
-			return *(DatX*)nullptr; // 强制程序崩溃
-		}
-		__type__ = 'K';
-	}
+    if (szKey == nullptr || szKey[0] == 0)
+    { // Add
+        if (__type__ != 'V' && __type__ != '?')
+        {
+            return *(DatX*)nullptr; // 强制程序崩溃
+        }
+        __type__ = 'V';
+    }
+    else
+    { // Put
+        if (__type__ != 'K' && __type__ != '?')
+        {
+            return *(DatX*)nullptr; // 强制程序崩溃
+        }
+        __type__ = 'K';
+    }
 #endif
 
     int klen = strlen(szKey) + 1;
@@ -206,7 +206,7 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
     {
         p_root->__len__ += diff;
         *(unsigned int*)p_root->__mem__ = p_root->__len__; // 更新当前节点__len__
-        *(unsigned int*)(p_root->__mem__-sizeof(XTY::n)) = p_root->__len__; // 更新当前节点在所属XTY的n
+        *(unsigned int*)(p_root->__mem__ - sizeof(XTY::n)) = p_root->__len__; // 更新当前节点在所属XTY的n
         p_root->__cap__ = p_root->__len__; // 非根节点保持__cap__==__len__
         p_root = p_root->__parent__;
     }
@@ -224,7 +224,7 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
             realloc((void*)__mem__, __cap__);
         }
     }
-    else if(diff > 0)
+    else if (diff > 0)
     { // 数据扩充，后移mem处的数据
         unsigned int newlen = p_root->__len__ + diff;
         unsigned int __mem__ofs_ = (*p_mem) - p_root->__mem__; // 计算偏移，因为realloc后__mem__可能会变
@@ -235,9 +235,9 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
         }
         *(unsigned int*)p_root->__mem__ = newlen; // 只能放在realloc后，使得可以处理未初始化的根节点
         if ((*p_mem) == 0) { (*p_mem) = p_root->__mem__ + sizeof(DatX::__len__); }
-        else { (*p_mem) = p_root->__mem__ + __mem__ofs_;}  // 更新并回传给调用者
+        else { (*p_mem) = p_root->__mem__ + __mem__ofs_; }  // 更新并回传给调用者
 
-        if (len != 0) {memmove((void*)((*p_mem) + xlen), (void*)(*p_mem), p_root->__len__ - __mem__ofs_);}
+        if (len != 0) { memmove((void*)((*p_mem) + xlen), (void*)(*p_mem), p_root->__len__ - __mem__ofs_); }
         p_root->__len__ = newlen;
     }
 }
