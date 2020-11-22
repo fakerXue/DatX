@@ -4,15 +4,16 @@
 ** All rights reserved.
 ** Name		: DatX.h/cpp
 ** Desc		: 一种紧凑的数据结构，适合网络传输，配置存储等，一定程度上能替代json，读写均优于json，0秒解析
-**				内存结构如下： {DatX::__len__,[szKey01,nBin01,pBin01],[szKey02,nBin02,pBin02],...}
+**				内存结构如下： {DatX::__len__,DatX::__type__,[szKey01,xType01,nBin01,pBin01],[szKey02,xType02,nBin02,pBin02],...}
+**              万物皆KV对，普通元素[k,t,n,v]，无键名元素['\0',t,n,v]，有键名null元素[k,t,n,_]，无键名null元素['\0',t,n,_]；
 **              兼容所有json格式，如：
 **                  1.单级对象：{"aaa":521,"bbb":13.14,"ccc":"hello"}
 **                  2.单级数组：["elem0","elem1","elem2"]
 **                  3.对象包数组：{"aaa":521,"bbb":13.14,"ccc":"hello","ddd":["elem0","elem1","elem2"]}
 **                  4.数组包对象：[{"aaa0":521,"bbb0":13.14,"ccc0":"hello"},{"aaa1":521,"bbb1":13.14}]
 **              另外支持的格式，如：
-**                  1.混杂数组1[0~2为键值对元素，3为数组元素]：{"aaa":521,"bbb":13.14,"ccc":"hello",["elem0","elem1","elem2"]}
-**                  2.混杂数组2：[0~2为键值对元素，3为数组元素，4~5为二进制]：{"aaa":521,"bbb":13.14,"ccc":"hello",["elem0","elem1","elem2"],"binary0":stream,"binary1":stream}
+**                  1.混杂数组1[0~2为键值对元素，3为数组元素]：{"aaa":521,"bbb":13.14,"hello",["elem0","elem1","elem2"]}
+**                  2.混杂数组2[0~2为键值对元素，3为数组元素，4~5为二进制]：{"aaa":521,"bbb":13.14,"hello",["elem0","elem1","elem2"],"binary0":stream,"binary1":stream}
 **            函数用法概览：
 **              1.Put：向当前DatX对象添加一个KV，当K已存在时会进行值替换，返回当前DatX的引用；
 **              2.Get(s)：从当前DatX对象获取K==s的KV对，仅支持有键名的元素；用XTY包装并返回；
@@ -43,23 +44,10 @@ namespace x2lib
     // 数据结构：
     struct DatX
     {
-        static const unsigned int COB = 1024; // 内存增长最小值
-        DatX* __parent__; // 父节点
-        unsigned int __mem__; // 数据起始地址
-        unsigned int __len__; // 数据总大小，会保存在数据头部
-        unsigned int __cap__; // 预留内存容量
-        unsigned int __cnt__; // 当前节点共有多少个元素
-        unsigned int __err__; // 保持最后一次错误码，0表示无错误。【待实现】
-
-        // 为K代表存储的是普通的KV对【对象形式】，为V代表存储的连续V值【数组形式】
-        // __type__=='?': {__len__,}
-        // __type__=='K': {__len__,[K,n,V],[K,n,V],...}
-        // __type__=='V': {__len__,[0,n,V],[0,n,V],...}
-        char __type__; // faker@2020-11-18 20:53:36 TODO __type__暂时被废弃[__Put]，否则将不支持混杂数组，万物皆键值对【KV】
-
         struct XTY
         {
-            bool IsNull() { return  (k == nullptr || v == 0 || n < 1); };
+            bool IsNull() { return  (k != nullptr && v != 0 && n == 0 && t == 'N'); };
+            bool IsValid() { return  (k != nullptr && v != 0); };
 
             unsigned int _n_; // 当前键值对的总大小
             union
@@ -67,12 +55,13 @@ namespace x2lib
                 unsigned int _p_; // 当前键值对的起始地址
                 char* k; // 指向键名，对于DatX::__type__=='V'，k始终指向'\0'
             };
+            char t; // 值类型：['N',null],['I',int],['F',double],['B',bool],['S',string],['H',binary],['K',DatX::__type__=='K'],['V',DatX::__type__=='V']
             unsigned int n; // 键值字节数
             unsigned int v; // 键值地址
             int i; // 键的索引
 
             int I; // 导出为int型
-            float F; // 导出为float型
+            double F; // 导出为float型
             char *S; // 导出为char*型
             friend struct DatX;
 
@@ -82,6 +71,7 @@ namespace x2lib
             };
 
         private:
+            // iKey只用来设置
             bool Read(unsigned int _k_mem, int iKey)
             {
                 memset(this, 0, sizeof(XTY));
@@ -91,16 +81,23 @@ namespace x2lib
                     i = iKey;
                     k = (char*)_k_mem;
                     int klen = strlen(k) + 1;
-                    n = *(unsigned int*)(_k_mem + klen);
-                    v = _k_mem + klen + sizeof(XTY::n);
-                    _n_ = klen + sizeof(XTY::n) + n;
+                    t = *(char*)(_k_mem + klen);
+                    n = *(unsigned int*)(_k_mem + klen + sizeof(XTY::t));
+                    v = _k_mem + klen + sizeof(XTY::t) + sizeof(XTY::n);
+                    _n_ = klen + sizeof(XTY::t) + sizeof(XTY::n) + n;
 
+#if 0
                     char szTemp[32];
                     memcpy(szTemp, (char*)v, n > sizeof(szTemp) ? sizeof(szTemp) : n);
                     szTemp[31] = 0;
                     I = atoi(szTemp);
                     F = (float)atof(szTemp);
                     S = (char*)v;
+#else
+                    I = *(int*)v;
+                    F = *(double*)v;
+                    S = (char*)v;
+#endif
 
                     return true;
                 }
@@ -108,6 +105,7 @@ namespace x2lib
             };
         };
 
+    public:
         DatX();
         DatX(void* pMem, int nLen);
         DatX(const char* szKey, const char* szFmt, ...);
@@ -122,18 +120,20 @@ namespace x2lib
         unsigned int Cnt() const;
 
         // 用于添加键值对，所有Put都返回当前DatX对象
+        DatX& Put(const char* szKey, bool bVal);
         DatX& Put(const char* szKey, int iVal);
         DatX& Put(const char* szKey, double dVal);
-        DatX& Put(const char* szKey, char* sVal);
-        DatX& Put(const char* szKey, const char* szFmt, ...);
+        //DatX& Put(const char* szKey, char* sVal);
+        DatX& Put(const char* szKey, const char* szFmt, ...); // 当szFmt=nullptr时添加一个名为szKey的null元素
         DatX& Put(const char* szKey, unsigned int nBin, void* pBin);
         DatX& Put(const char* szKey, DatX& dx);
 
         // 用于添加数组元素，所有Add都返回当前DatX对象
+        DatX& Add(bool bVal);
         DatX& Add(int iVal);
         DatX& Add(double dVal);
-        DatX& Add(char* sVal);
-        DatX& Add(const char* szFmt, ...);
+        //DatX& Add(char* sVal);
+        DatX& Add(const char* szFmt, ...); // 当szFmt=nullptr时添加一个null元素
         DatX& Add(unsigned int nBin, void* pBin);
         DatX& Add(DatX& dx);
 
@@ -153,35 +153,40 @@ namespace x2lib
         *************************************************************************/
         bool Del(int iKey);
 
+        // 清空
+        void Clear();
+
+        bool IsArr();
+
         /*************************************************************************
-        ** Desc     : 将szKey对应的值强转为一个【数组型】DatX，若转换失败则会将原值置空
+        ** Desc     : 获取名为szKey子节点【数组型】，当子节点为null或对象时会被置为空数组
         ** Param    : [in] szKey
-        ** Return   :
-        ** Author   : faker@2020-11-12 08:53:51
+        ** Return   : szKey对应的元素必须存在，否则返回一个无效DatX
+        ** Author   : faker@2020-11-12
         *************************************************************************/
         DatX operator[](const char* szKey);
 
         /*************************************************************************
-        ** Desc     : 将iKey对应的值强转为一个【数组型】DatX，若转换失败则会将原值置空，若iKey>=当前DatX::Cnt()，则在DatX::Cnt()处创建
+        ** Desc     : 获取第iKey个子节点【数组型】，当子节点为null或对象时会被置为空数组
         ** Param    : [in] iKey
-        ** Return   :
-        ** Author   : faker@2020-11-12 08:53:51
+        ** Return   : iKey对应的元素必须存在，否则返回一个无效DatX
+        ** Author   : faker@2020-11-12
         *************************************************************************/
         DatX operator[](int iKey);
-#if 0 // faker@2020-11-19 20:26:15 暂时废弃，因为已不区分数组和普通对象
+#if 1 // faker@2020-11-19 20:26:15 暂时废弃，因为已不区分数组和普通对象
         /*************************************************************************
-        ** Desc     : 将szKey对应的值子化为一个【对象型】DatX，若转换失败则会将原值置空
-        ** Param    : [in] szKey
-        ** Return   :
-        ** Author   : faker@2020-11-12 08:53:51
+        ** Desc     : 获取名为szKey子节点【对象型】，当子节点为null或数组时会被置为空对象
+        ** Param    : [in] szKey 
+        ** Return   : szKey对应的元素必须存在，否则返回一个无效DatX
+        ** Author   : faker@2020-11-12
         *************************************************************************/
         DatX operator()(const char* szKey);
 
         /*************************************************************************
-        ** Desc     : 将iKey对应的值子化为一个【对象型】DatX，若转换失败则会将原值置空
+        ** Desc     : 获取第iKey个子节点【对象型】，当子节点为null或数组时会被置为空对象
         ** Param    : [in] iKey
-        ** Return   :
-        ** Author   : faker@2020-11-12 08:53:51
+        ** Return   : iKey对应的元素必须存在，否则返回一个无效DatX
+        ** Author   : faker@2020-11-12
         *************************************************************************/
         DatX operator()(int iKey);
 #endif
@@ -212,11 +217,6 @@ namespace x2lib
         bool Build(void* pMem, int nLen);
         bool IsValid();
 
-        // 待实现。。。作为抽象函数，留给用户对接json解析器
-        // 将json字符串解析到当前DatX对象
-        bool FromJson(char* pJson) { return false; };
-        // 将DatX到处未json字符串，返回真实数据大小
-        int ToJson(char* pJsonBuf, int nJsonBuf) { return 0; };
     protected:
         /*************************************************************************
         ** Desc     : 只能尝试判断是否有效，且操作不当有可能会造成崩溃，最好使用win最好使用IsBadReadPtr判断
@@ -230,7 +230,8 @@ namespace x2lib
 
         /*************************************************************************
         ** Desc     : 移动数据，为将要添加或删除的键值对预留空间，所有的内存分配/释放都必须在此函数内进行；
-        **              当mem==0且xlen>len时，会触发对this成员的初始化
+        **              当mem==0且xlen>len时，会触发对this成员的初始化；
+        **              函数内部在必要时会更新当前节点以及所有父辈节点的__mem__, __len__, __cap__,函数外部应该做好__parent__, __cnt__的更新；
         ** Param    : [in] p_mem 欲添加或删除的键值对地址的地址，mem==0意味着这是根节点的首个数据
         **            [in] len 原本mem处的数据大小，len==0意味着这是一个新的元素
         **            [in] xlen 新数据大小
@@ -239,7 +240,22 @@ namespace x2lib
         *************************************************************************/
         void move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen);
         DatX& _Put(const char* szKey, const char* szFmt, va_list body);
-        DatX& __Put(const char* szKey, unsigned int nBin, void* pBin);
+        DatX::XTY __Put(const char* szKey, char t, unsigned int nBin, void* pBin);
+
+        static const unsigned int COB = 1024; // 内存增长最小值
+        static const unsigned int GC_SIZE = COB * 4; // 内存回收最小值
+        DatX* __parent__; // 父节点
+        unsigned int __mem__; // 数据起始地址
+        unsigned int __len__; // 数据总大小，会保存在数据头部
+        unsigned int __cap__; // 预留内存容量
+        unsigned int __cnt__; // 当前节点共有多少个元素
+        unsigned int __err__; // 保持最后一次错误码，0表示无错误。【待实现】
+
+        // 为K代表存储的是普通的KV对【对象形式】，为V代表存储的连续V值【数组形式】，新创建的DatX默认为K型
+        // __type__=='K': {__len__,__type__,[K,n,V],[K,n,V],...}
+        // __type__=='V': {__len__,__type__,[0,n,V],[0,n,V],...}
+        // __type__只在当前节点添加首个元素或使用()/[]强转时进行设置和判断
+        char __type__; // 为了能使用Parse/Print与Json互转【存在流元素和混杂数组时仍然会有问题】，需要启用__type__功能
     };
 
     // 仅支持只读，用于在无需写入操作时快速从DatX中获取所需值

@@ -22,7 +22,7 @@ DatX::DatX(const char* szKey, const char* szFmt, ...)
 
 DatX::DatX(const char* szKey, int nBin, void* pBin)
 {
-    __Put(szKey, nBin, pBin);
+    __Put(szKey,'H' ,nBin, pBin);
 }
 
 DatX::~DatX()
@@ -59,86 +59,50 @@ unsigned int DatX::Cnt() const
     return __cnt__;
 }
 
+DatX& DatX::Put(const char* szKey, bool bVal)
+{
+    __Put(szKey, 'B', sizeof(bVal), &bVal);
+    return *this;
+}
+
 DatX& DatX::Put(const char* szKey, int iVal)
 {
-    return Put(szKey, "%d", iVal);
+    __Put(szKey, 'I', sizeof(iVal), &iVal);
+    return *this;
 }
 
 DatX& DatX::Put(const char* szKey, double dVal)
 {
-    return Put(szKey, "%.6f", dVal);
+    __Put(szKey, 'F', sizeof(dVal), &dVal);
+    return *this;
 }
 
-DatX& DatX::Put(const char* szKey, char* sVal)
-{
-    return Put(szKey, "%s", sVal);
-}
+//DatX& DatX::Put(const char* szKey, char* sVal)
+//{
+//    if(sVal) Put(szKey, "%s", sVal);
+//    else __Put(szKey, 'N', 0, nullptr);
+//    return *this;
+//}
 
 DatX& DatX::Put(const char* szKey, const char* szFmt, ...)
 {
-    va_list body;
-    va_start(body, szFmt);
-    _Put(szKey, szFmt, body);
-    va_end(body);
+    if (szFmt == nullptr)
+    {
+        __Put(szKey, 'N', 0, nullptr);
+    }
+    else
+    {
+        va_list body;
+        va_start(body, szFmt);
+        _Put(szKey, szFmt, body);
+        va_end(body);
+    }
     return *this;
 }
 
 DatX& DatX::Put(const char* szKey, unsigned int nBin, void* pBin)
 {
-    return __Put(szKey, nBin, pBin);
-}
-
-DatX& DatX::__Put(const char* szKey, unsigned int nBin, void* pBin)
-{
-#if 1 // 暂时废弃__type__，使之支持混杂数组，后续看是否有必要开启
-    __type__ = '?';
-#else
-    if (szKey == nullptr || szKey[0] == 0)
-    { // Add
-        if (__type__ != 'V' && __type__ != '?')
-        {
-            return *(DatX*)nullptr; // 强制程序崩溃
-        }
-        __type__ = 'V';
-    }
-    else
-    { // Put
-        if (__type__ != 'K' && __type__ != '?')
-        {
-            return *(DatX*)nullptr; // 强制程序崩溃
-        }
-        __type__ = 'K';
-    }
-#endif
-
-    int klen = strlen(szKey) + 1;
-    unsigned int newlen = klen + sizeof(XTY::n) + nBin;
-    unsigned int p_mem = 0;
-
-    XTY x = this->Get(szKey);
-    if (!x.IsNull())
-    {
-        p_mem = x._p_;
-        move_memory(&p_mem, x._n_, newlen);
-        // 若p_mem被move_memory更改，则x失效，但由于后续没再使用x，因此忽略更新
-    }
-    else
-    {
-        if (__mem__ == 0/* || __len__ == 0*/) newlen += sizeof(DatX::__len__); // 根节点首次申请内存
-        p_mem = __mem__ + __len__;
-        move_memory(&p_mem, 0, newlen);
-        //if (p_mem == 0)
-        //{
-        //    p_mem = __mem__ + sizeof(DatX::__len__);
-        //    // __len__ += sizeof(DatX::__len__);
-        //}
-    }
-
-    memcpy((void*)p_mem, szKey, klen);
-    *(unsigned int*)(p_mem + klen) = nBin;
-    memcpy((void*)(p_mem + klen + sizeof(XTY::n)), pBin, nBin);
-    ++__cnt__;
-
+    __Put(szKey, 'H', nBin, pBin);
     return *this;
 }
 
@@ -152,49 +116,116 @@ DatX& DatX::_Put(const char* szKey, const char* szFmt, va_list body)
         vsnprintf(pData, nData, (char*)szFmt, body);
     }
     pData[nData] = 0;
-    __Put(szKey, nData, pData);
+    __Put(szKey, 'S', nData, pData);
     free(pData);
 
     return *this;
 }
 
+DatX::XTY DatX::__Put(const char* szKey, char t, unsigned int nBin, void* pBin)
+{
+#if 0 // 暂时废弃__type__，使之支持混杂数组，后续看是否有必要开启
+    __type__ = '?';
+#else
+    if (__cnt__ == 0)
+    { // 只在添加首个元素时设定当前节点类型
+        if (szKey == nullptr || szKey[0] == 0)
+        { // Add
+            //if (__type__ != 'V' && __type__ != '?')
+            //{
+            //    return *(DatX*)nullptr; // 强制程序崩溃
+            //}
+            __type__ = 'V';
+        }
+        else
+        { // Put
+            //if (__type__ != 'K' && __type__ != '?')
+            //{
+            //    return *(DatX*)nullptr; // 强制程序崩溃
+            //}
+            __type__ = 'K';
+        }
+    }
+#endif
+
+    const char *pKey = (szKey?szKey:"\0");
+    int klen = strlen(pKey) + 1;
+    unsigned int newlen = klen + sizeof(XTY::t) + sizeof(XTY::n) + nBin;
+    unsigned int p_mem = 0;
+
+    XTY x = this->Get(pKey);
+    if (x.IsValid())
+    {
+        p_mem = x._p_;
+        move_memory(&p_mem, x._n_, newlen);
+    }
+    else
+    {
+        if (__mem__ == 0/* || __len__ == 0*/) newlen += sizeof(DatX::__len__) + sizeof(DatX::__type__); // 根节点首次申请内存
+        p_mem = __mem__ + __len__;
+        move_memory(&p_mem, 0, newlen);
+    }
+
+    memcpy((void*)p_mem, pKey, klen);
+    *(char*)(p_mem + klen) = t;
+    *(unsigned int*)(p_mem + klen + sizeof(XTY::t)) = nBin;
+    memcpy((void*)(p_mem + klen + sizeof(XTY::t) + sizeof(XTY::n)), pBin, nBin);
+    x.Read(p_mem, __cnt__);
+    ++__cnt__;
+
+    return x;
+}
+
 DatX& DatX::Put(const char* szKey, DatX& dx)
 {
-    return __Put(szKey, dx.Len(), (void*)dx.Mem());
+    __Put(szKey, dx.__type__ , dx.Len(), (void*)dx.Mem());
+    return *this;
+}
+
+DatX& DatX::Add(bool bVal)
+{
+    return Put("", bVal);
 }
 
 DatX& DatX::Add(int iVal)
 {
-    return Add("%d", iVal);
+    return Put("", iVal);
 }
 
 DatX& DatX::Add(double dVal)
 {
-    return Add("%.6f", dVal);
+    return Put("", dVal);
 }
 
-DatX& DatX::Add(char* sVal)
-{
-    return Add("%s", sVal);
-}
+//DatX& DatX::Add(char* sVal)
+//{
+//    return Put("", sVal);
+//}
 
 DatX& DatX::Add(const char* szFmt, ...)
 {
-    va_list body;
-    va_start(body, szFmt);
-    DatX& dx = _Put("", szFmt, body);
-    va_end(body);
-    return dx;
+    if (szFmt == nullptr)
+    {
+        __Put("", 'N', 0, nullptr);
+    }
+    else
+    {
+        va_list body;
+        va_start(body, szFmt);
+        _Put("", szFmt, body);
+        va_end(body);
+    }
+    return *this;
 }
 
 DatX& DatX::Add(unsigned int nBin, void* pBin)
 {
-    return __Put("", nBin, pBin);
+    return Put("", nBin, pBin);
 }
 
 DatX& DatX::Add(DatX& dx)
 {
-    return Add(dx.Len(), (void*)dx.Mem());
+    return Put("", dx);
 }
 
 void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
@@ -211,15 +242,16 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
         p_root = p_root->__parent__;
     }
 
-    // 搬运数据
+    // 搬运数据，经过上面的迭代，以下代码只针对根节点操作
     if (diff < 0)
     { // 数据收缩，前移mem+len处的数据
         memmove((void*)(*p_mem), (void*)((*p_mem) + len), p_root->__len__ - ((*p_mem) + len - p_root->__mem__));
         p_root->__len__ += diff;
         *(unsigned int*)p_root->__mem__ = p_root->__len__;
-        int _collect_bytes = p_root->__cap__ - (p_root->__len__ + DatX::COB * 4);
-        if (_collect_bytes > 0)
+        int _collect_bytes = p_root->__cap__ - p_root->__len__;
+        if (_collect_bytes > DatX::GC_SIZE)
         { // 垃圾回收
+            _collect_bytes -= (DatX::GC_SIZE * (_collect_bytes / DatX::GC_SIZE));
             p_root->__cap__ -= _collect_bytes;
             realloc((void*)__mem__, __cap__);
         }
@@ -234,7 +266,7 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
             p_root->__mem__ = (unsigned int)realloc((void*)p_root->__mem__, p_root->__cap__);
         }
         *(unsigned int*)p_root->__mem__ = newlen; // 只能放在realloc后，使得可以处理未初始化的根节点
-        if ((*p_mem) == 0) { (*p_mem) = p_root->__mem__ + sizeof(DatX::__len__); }
+        if ((*p_mem) == 0) { (*p_mem) = p_root->__mem__ + sizeof(DatX::__len__) + sizeof(DatX::__type__); }
         else { (*p_mem) = p_root->__mem__ + __mem__ofs_; }  // 更新并回传给调用者
 
         if (len != 0) { memmove((void*)((*p_mem) + xlen), (void*)(*p_mem), p_root->__len__ - __mem__ofs_); }
@@ -251,7 +283,7 @@ bool DatX::Del(const char *szKey)
 bool DatX::Del(int iKey)
 {
     XTY x = this->Get(iKey);
-    if (!x.IsNull())
+    if (x.IsValid())
     {
         move_memory(&x._p_, x._n_, 0); // 一旦x._p_被move_memory更改，则x失效
         --__cnt__;
@@ -260,63 +292,90 @@ bool DatX::Del(int iKey)
     return false;
 }
 
+void DatX::Clear()
+{
+    move_memory(&__mem__, __len__, sizeof(DatX::__len__) + sizeof(DatX::__type__));
+    __cnt__ = 0;
+}
+
 DatX DatX::operator[](const char* szKey)
 {
-    DatX dx;
-    dx.__parent__ = this;
-
-    XTY x = Get(szKey);
-    if (!x.IsNull())
-    {
-        if (DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
-        {
-            dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
-            dx.__len__ = x.n;
-            dx.__cap__ = x.n;
-            dx.__type__ = 'V';
-        }
-    }
-    else
-    {
-        unsigned int len = sizeof(DatX::__len__);
-        __Put(szKey, sizeof(len), &len); // 新增一个值为sizeof(DatX::__len__)的键值对
-        dx.__mem__ = (unsigned int)Get(szKey).v;
-        dx.__cap__ = dx.__len__ = sizeof(DatX::__len__);
-    }
-
-    return dx;
+    return (*this)[Get(szKey).i];
 }
 
 DatX DatX::operator[](int iKey)
 {
-    return (*this)[Get(iKey).k];
-}
-#if 0
-DatX DatX::operator()(const char* szKey)
-{ // faker@2020-11-14 10:34:13 TODO 以下代码有误，需要纠正
     DatX dx;
-    dx.__parent__ = this;
-
-    XTY x = Get(szKey);
-    if (!x.IsNull())
+    XTY x = Get(iKey);
+    if (x.IsValid())
     {
-        dx.Build(x.v, x.n);
-        return dx;
+        dx.__type__ = 'V';
+        if ((x.t == 'V' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
+        {
+            dx.__parent__ = this;
+            dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
+            dx.__len__ = x.n;
+            dx.__cap__ = x.n;
+        }
+        else
+        { // 置空
+            move_memory(&x.v, x.n, sizeof(DatX::__len__) + sizeof(DatX::__type__));
+        }
     }
+#if 0
     else
     {
-        unsigned int len = sizeof(DatX::__len__);
-        __Put(szKey, (unsigned char*)&len, sizeof(len)); // 新增一个值为sizeof(DatX::__len__)的键值对
-        dx.__mem__ = (unsigned int)Get(szKey).v;
-        dx.__cap__ = dx.__len__ = sizeof(DatX::__len__);
+        unsigned int len = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+        unsigned char val[sizeof(DatX::__len__) + sizeof(DatX::__type__)];
+        *((unsigned int*)&(val[0])) = len;
+        val[sizeof(DatX::__len__)] = 'K'; // 新的节点默认设置为K型
+        XTY x = __Put(szKey, 'V', len, val); // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
+        dx.__mem__ = x.v;
+        dx.__cap__ = dx.__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
     }
+#endif
 
     return dx;
+}
+#if 1
+DatX DatX::operator()(const char* szKey)
+{
+    return (*this)(Get(szKey).i);
 }
 
 DatX DatX::operator()(int iKey)
 {
-    return (*this)[Get(iKey).k];
+    DatX dx;
+    XTY x = Get(iKey);
+    if (x.IsValid())
+    {
+        dx.__type__ = 'K';
+        if ((x.t == 'K' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
+        {
+            dx.__parent__ = this;
+            dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
+            dx.__len__ = x.n;
+            dx.__cap__ = x.n;
+        }
+        else
+        { // 置空
+            move_memory(&x.v, x.n, sizeof(DatX::__len__) + sizeof(DatX::__type__));
+        }
+    }
+#if 0
+    else
+    {
+        unsigned int len = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+        unsigned char val[sizeof(DatX::__len__) + sizeof(DatX::__type__)];
+        *((unsigned int*)&(val[0])) = len;
+        val[sizeof(DatX::__len__)] = 'K'; // 新的节点默认设置为K型
+        XTY x = __Put(szKey, 'K', len, val); // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
+        dx.__mem__ = x.v;
+        dx.__cap__ = dx.__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+    }
+#endif
+
+    return dx;
 }
 #endif
 
@@ -324,7 +383,7 @@ DatX::XTY DatX::Get(unsigned int iKey)
 {
     if (__mem__ != 0 && iKey >= 0 && iKey < __cnt__)
     {
-        XTY x_temp(__mem__ + sizeof(DatX::__len__));
+        XTY x_temp(__mem__ + sizeof(DatX::__len__) + sizeof(DatX::__type__));
         for (unsigned int i = 0;;)
         {
             if (i == iKey) return x_temp;
@@ -340,10 +399,10 @@ DatX::XTY DatX::Get(const char* szKey)
 {
     if (szKey && szKey[0] && __mem__ != 0 && __cnt__ != 0)
     {
-        XTY x_temp(__mem__ + sizeof(DatX::__len__));
+        XTY x_temp(__mem__ + sizeof(DatX::__len__) + sizeof(DatX::__type__));
         for (unsigned int i = 0;;)
         {
-            if (x_temp.IsNull())
+            if (!x_temp.IsValid())
                 break;
             if (strcmp(x_temp.k, szKey) == 0)
                 return x_temp;
@@ -366,14 +425,12 @@ bool DatX::Build(void* pMem, int nLen)
     if (!DatX::IsValid(pMem, nLen, &__cnt__))
     {
         memset(this, 0, sizeof(DatX));
-        __type__ = '?';
         return false;
     }
     move_memory(&__mem__, __len__, nLen); // 待验证！！！！
     memcpy((void*)__mem__, pMem, nLen);
     __len__ = nLen;
-    if (((char*)(__mem__ + sizeof(DatX::__len__)))[0] == 0) __type__ = 'V';
-    else __type__ = 'K';
+    __type__ = *(char*)(__mem__ + sizeof(DatX::__len__) + sizeof(DatX::__type__));
     return true;
 }
 
@@ -388,12 +445,12 @@ bool DatX::IsValid(void* pMem, int nLen, unsigned int* pnCnt)
     if (!pMem || nLen == 0 || (*(unsigned int*)pMem) != nLen)
         return false;
 
-    XTY x_temp((unsigned int)pMem + sizeof(DatX::__len__));
+    XTY x_temp((unsigned int)pMem + sizeof(DatX::__len__) + sizeof(DatX::__type__));
     unsigned int i = 0;
-    int sumlen = sizeof(DatX::__len__);
+    int sumlen = sizeof(DatX::__len__) + sizeof(DatX::__type__);
     do
     {
-        if (x_temp.IsNull())
+        if (!x_temp.IsValid())
             return false;
         sumlen += x_temp._n_;
         if (sumlen > nLen) return false;
