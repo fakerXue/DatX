@@ -1,5 +1,6 @@
 # DatX
-一种紧凑的数据结构，适合网络传输，配置存储等，一定程度上能替代json，读写均优于json，0秒解析。自带demo
+一种紧凑的数据结构，适合网络传输，配置存储等，一定程度上能替代json，读写均优于json，0秒解析。自带demo演示。
+通过MemJson可以实现与Json的互转，也支持将原生DatX文本化；
 ```C++
 /*************************************************************************
 ** Desc		: 一种紧凑的数据结构，适合网络传输，配置存储等，一定程度上能替代json，读写均优于json，0秒解析
@@ -25,4 +26,6 @@
 *************************************************************************/
 ```
 
-![image](https://github.com/fakerXue/DatX/blob/main/TestCase.png)
+![image](https://github.com/fakerXue/DatX/blob/main/TestCase_DatX.png)
+![image](https://github.com/fakerXue/DatX/blob/main/TestCase_MemJson.png)
+
