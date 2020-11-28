@@ -7,11 +7,6 @@ DatX::DatX()
     Build(nullptr, 0);
 }
 
-DatX::DatX(void* pMem, int nLen)
-{
-    Build(pMem, nLen);
-}
-
 DatX::DatX(const char* szKey, const char* szFmt, ...)
 {
     va_list body;
@@ -124,9 +119,6 @@ DatX& DatX::_Put(const char* szKey, const char* szFmt, va_list body)
 
 DatX::XTY DatX::__Put(const char* szKey, char t, unsigned int nBin, void* pBin)
 {
-#if 0 // 暂时废弃__type__，使之支持混杂数组，后续看是否有必要开启
-    __type__ = '?';
-#else
     if (__cnt__ == 0)
     { // 只在添加首个元素时设定当前节点类型
         if (szKey == nullptr || szKey[0] == 0)
@@ -146,7 +138,6 @@ DatX::XTY DatX::__Put(const char* szKey, char t, unsigned int nBin, void* pBin)
             __type__ = 'K';
         }
     }
-#endif
 
     const char *pKey = (szKey?szKey:"\0");
     int klen = strlen(pKey) + 1;
@@ -196,11 +187,6 @@ DatX& DatX::Add(double dVal)
 {
     return Put("", dVal);
 }
-
-//DatX& DatX::Add(char* sVal)
-//{
-//    return Put("", sVal);
-//}
 
 DatX& DatX::Add(const char* szFmt, ...)
 {
@@ -272,6 +258,8 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
         if (len != 0) { memmove((void*)((*p_mem) + xlen), (void*)(*p_mem), p_root->__len__ - __mem__ofs_); }
         p_root->__len__ = newlen;
     }
+
+    update_nodes_ptr(); // 不太合理，几乎任何一次键值对的变动都需要对所有节点指针进行更新
 }
 
 bool DatX::Del(const char *szKey)
@@ -298,29 +286,40 @@ void DatX::Clear()
     __cnt__ = 0;
 }
 
-DatX DatX::operator[](const char* szKey)
+bool DatX::IsArr()
+{
+    return (__type__ == 'V');
+}
+
+DatX& DatX::operator[](const char* szKey)
 {
     return (*this)[Get(szKey).i];
 }
 
-DatX DatX::operator[](int iKey)
+DatX& DatX::operator[](int iKey)
 {
-    DatX dx;
+    DatX* pdx = nullptr;
     XTY x = Get(iKey);
     if (x.IsValid())
     {
-        dx.__type__ = 'V';
+        pdx = find_node_ptr(x.v);
+        if (pdx != nullptr) return *pdx;
+#if 0
         if ((x.t == 'V' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
         {
             dx.__parent__ = this;
             dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
             dx.__len__ = x.n;
             dx.__cap__ = x.n;
+            dx.__type__ = 'V';
         }
+#endif
+#if 0
         else
         { // 置空
             move_memory(&x.v, x.n, sizeof(DatX::__len__) + sizeof(DatX::__type__));
         }
+#endif
     }
 #if 0
     else
@@ -329,55 +328,63 @@ DatX DatX::operator[](int iKey)
         unsigned char val[sizeof(DatX::__len__) + sizeof(DatX::__type__)];
         *((unsigned int*)&(val[0])) = len;
         val[sizeof(DatX::__len__)] = 'K'; // 新的节点默认设置为K型
-        XTY x = __Put(szKey, 'V', len, val); // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
-        dx.__mem__ = x.v;
+        dx.__mem__ = __Put(x.k, 'V', len, val).v; // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
         dx.__cap__ = dx.__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
     }
 #endif
 
-    return dx;
+    return *pdx;
 }
-#if 1
-DatX DatX::operator()(const char* szKey)
+
+DatX& DatX::operator()(const char* szKey)
 {
     return (*this)(Get(szKey).i);
 }
 
-DatX DatX::operator()(int iKey)
+DatX& DatX::operator()(int iKey)
 {
-    DatX dx;
+    DatX* pdx = nullptr;
     XTY x = Get(iKey);
     if (x.IsValid())
     {
-        dx.__type__ = 'K';
-        if ((x.t == 'K' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
+        pdx = find_node_ptr(x.v);
+        if (pdx != nullptr) return *pdx;
+        pdx = new DatX();
+        //只判断pdx是否存在，存在则说明一定是一个K或V节点，直接返回即可，否则再进行纠正返回
+        pdx->__type__ = 'K';
+#if 0
+        if ((x.t == 'K' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &pdx->__cnt__))
         {
-            dx.__parent__ = this;
-            dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
-            dx.__len__ = x.n;
-            dx.__cap__ = x.n;
+            pdx->__parent__ = this;
+            pdx->__mem__ = (unsigned int)x.v;
+            pdx->__len__ = x.n;
+            pdx->__cap__ = x.n;
         }
         else
+#endif
         { // 置空
-            move_memory(&x.v, x.n, sizeof(DatX::__len__) + sizeof(DatX::__type__));
+            pdx->__parent__ = this;
+            pdx->__mem__ = (unsigned int)x.v;
+            pdx->__cap__ = pdx->__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+            move_memory(&pdx->__mem__, x.n, pdx->__len__);
         }
     }
-#if 0
     else
     {
+        pdx = new DatX();
+        pdx->__parent__ = this;
+        pdx->__type__ = 'K';
         unsigned int len = sizeof(DatX::__len__) + sizeof(DatX::__type__);
         unsigned char val[sizeof(DatX::__len__) + sizeof(DatX::__type__)];
         *((unsigned int*)&(val[0])) = len;
         val[sizeof(DatX::__len__)] = 'K'; // 新的节点默认设置为K型
-        XTY x = __Put(szKey, 'K', len, val); // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
-        dx.__mem__ = x.v;
-        dx.__cap__ = dx.__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+        pdx->__mem__ = __Put(x.k, 'K', len, val).v; // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
+        pdx->__cap__ = pdx->__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+        append_node_ptr(pdx);
     }
-#endif
 
-    return dx;
+    return *pdx;
 }
-#endif
 
 DatX::XTY DatX::Get(unsigned int iKey)
 {
@@ -464,3 +471,43 @@ bool DatX::IsValid(void* pMem, int nLen, unsigned int* pnCnt)
     return true;
 }
 
+DatX* DatX::find_node_ptr(unsigned int _v_)
+{
+    for (DatX* p = __nodes__; p; p = p->__nodes__)
+    {
+        if (p->__mem__ == _v_) return p;
+    }
+    return nullptr;
+}
+
+void DatX::append_node_ptr(DatX* pdx)
+{
+    DatX** p = &__nodes__;
+    for (; *p ; p = &((*p)->__nodes__));
+    *p = pdx;
+}
+
+void DatX::remove_node_ptr(DatX* pdx)
+{
+    DatX** p = &__nodes__;
+    for (; *p && (*p)->__nodes__; p = &(*p)->__nodes__)
+    {
+        if (*p == pdx)
+        {
+            delete pdx;
+            *p = (*p)->__nodes__;
+            break;
+        }
+        else if ((*p)->__nodes__ == pdx)
+        {
+            delete pdx;
+            (*p)->__nodes__ = (*p)->__nodes__->__nodes__;
+            break;
+        }
+    }
+}
+
+void DatX::update_nodes_ptr()
+{
+    
+}

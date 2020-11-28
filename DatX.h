@@ -22,8 +22,10 @@
 **              5.Add：向当前DatX添加一个无键名元素，一般用于添加数组元素，返回当前DatX的引用；
 **              6.Del(s)：从当前DatX删除一个有键名的元素，一般用于删除键值对元素；
 **              7.Del(i)：向当前DatX添加一个无键名的元素，一般用于删除数组元素；
-**              8.[s]：将当前DatX键名为s的键值转化为一个DatX，用于操作访问子节点；
-**              9.[i]：将当前DatX第i个元素键值转化为一个DatX，用于操作访问子节点；
+**              8.[s]：将键名为s的元素转换为【数组型】子节点；
+**              9.[i]：将第i个元素转换为【数组型】子节点；
+**              10.(s)：将键名为s的元素转换为【对象型】子节点；
+**              11.(i)：将第i个元素转换为【对象型】子节点；
 ** Author	: faker@2017-3-19 11:11:57
 *************************************************************************/
 
@@ -41,7 +43,6 @@
 
 namespace x2lib
 {
-    // 数据结构：
     struct DatX
     {
         struct XTY
@@ -107,7 +108,6 @@ namespace x2lib
 
     public:
         DatX();
-        DatX(void* pMem, int nLen);
         DatX(const char* szKey, const char* szFmt, ...);
         DatX(const char* szKey, int nBin, void* pBin);
         ~DatX(); // 构造函数使用了memset，禁止设为virtual
@@ -126,16 +126,15 @@ namespace x2lib
         //DatX& Put(const char* szKey, char* sVal);
         DatX& Put(const char* szKey, const char* szFmt, ...); // 当szFmt=nullptr时添加一个名为szKey的null元素
         DatX& Put(const char* szKey, unsigned int nBin, void* pBin);
-        DatX& Put(const char* szKey, DatX& dx);
+        //DatX& Put(const char* szKey, DatX& dx); // 只留1个新增节点入接口，通过()操作符新增
 
         // 用于添加数组元素，所有Add都返回当前DatX对象
         DatX& Add(bool bVal);
         DatX& Add(int iVal);
         DatX& Add(double dVal);
-        //DatX& Add(char* sVal);
         DatX& Add(const char* szFmt, ...); // 当szFmt=nullptr时添加一个null元素
         DatX& Add(unsigned int nBin, void* pBin);
-        DatX& Add(DatX& dx);
+        //DatX& Add(DatX& dx); // 只留1个新增节点入接口，通过()操作符新增
 
         /*************************************************************************
         ** Desc     : 删除一个元素，不支持数组元素
@@ -156,40 +155,46 @@ namespace x2lib
         // 清空
         void Clear();
 
+        /*************************************************************************
+        ** Desc     : 判断当前节点是否为数组，仅对标准Json数据有效；
+        ** Param    : [in] 
+        ** Return   : 
+        ** Author   : faker@2020-11-22
+        *************************************************************************/
         bool IsArr();
 
         /*************************************************************************
-        ** Desc     : 获取名为szKey子节点【数组型】，当子节点为null或对象时会被置为空数组
+        ** Desc     : 获取名为szKey的子节点，szKey对应的子节点必须存在
         ** Param    : [in] szKey
-        ** Return   : szKey对应的元素必须存在，否则返回一个无效DatX
+        ** Return   : 返回得到的子节点，若子节点不存在，则返回一个无效DatX
         ** Author   : faker@2020-11-12
         *************************************************************************/
-        DatX operator[](const char* szKey);
+        DatX& operator[](const char* szKey);
 
         /*************************************************************************
-        ** Desc     : 获取第iKey个子节点【数组型】，当子节点为null或对象时会被置为空数组
+        ** Desc     : 获取第iKey个子节点，szKey对应的子节点必须存在
         ** Param    : [in] iKey
-        ** Return   : iKey对应的元素必须存在，否则返回一个无效DatX
+        ** Return   : 返回得到的子节点，若子节点不存在，则返回一个无效DatX
         ** Author   : faker@2020-11-12
         *************************************************************************/
-        DatX operator[](int iKey);
-#if 1 // faker@2020-11-19 20:26:15 暂时废弃，因为已不区分数组和普通对象
+        DatX& operator[](int iKey);
+
         /*************************************************************************
-        ** Desc     : 获取名为szKey子节点【对象型】，当子节点为null或数组时会被置为空对象
+        ** Desc     : 获取名为szKey的子节点，当子节点不存在、null或为值类型时，将会清空或创建一个空节点
         ** Param    : [in] szKey 
-        ** Return   : szKey对应的元素必须存在，否则返回一个无效DatX
+        ** Return   : 返回得到的子节点
         ** Author   : faker@2020-11-12
         *************************************************************************/
-        DatX operator()(const char* szKey);
+        DatX& operator()(const char* szKey);
 
         /*************************************************************************
-        ** Desc     : 获取第iKey个子节点【对象型】，当子节点为null或数组时会被置为空对象
+        ** Desc     : 获取第iKey个子节点，当子节点不存在、null或为值类型时，将会清空或创建一个空节点
         ** Param    : [in] iKey
-        ** Return   : iKey对应的元素必须存在，否则返回一个无效DatX
+        ** Return   : 返回得到的子节点
         ** Author   : faker@2020-11-12
         *************************************************************************/
-        DatX operator()(int iKey);
-#endif
+        DatX& operator()(int iKey);
+
         /*************************************************************************
         ** Desc     : 获取第iKey个元素，支持获取数组元素
         ** Param    : [in] iKey
@@ -213,8 +218,10 @@ namespace x2lib
         ** Author   : faker@2020-11-12 08:53:51
         *************************************************************************/
         int LastError();
+
         // 从另一个DatX对象构建到本对象，相当于拷贝
         bool Build(void* pMem, int nLen);
+
         bool IsValid();
 
     protected:
@@ -256,11 +263,27 @@ namespace x2lib
         // __type__=='V': {__len__,__type__,[0,n,V],[0,n,V],...}
         // __type__只在当前节点添加首个元素或使用()/[]强转时进行设置和判断
         char __type__; // 为了能使用Parse/Print与Json互转【存在流元素和混杂数组时仍然会有问题】，需要启用__type__功能
+    private: // 不允许此类操作
+        DatX(const DatX&) {};
+        DatX& operator=(const DatX&) {};
+        DatX* find_node_ptr(unsigned int _v_);
+        void append_node_ptr(DatX* pdx);
+        void remove_node_ptr(DatX* pdx);
+        void update_nodes_ptr();
+        
+        // 保存所有对象/数组节点指针
+        DatX* __nodes__; // 当前节点的所有一级子节点，水平链条结构
+        //struct Node
+        //{
+        //    DatX* item;
+        //    Node* next;
+        //}*__node__;
     };
 
     // 仅支持只读，用于在无需写入操作时快速从DatX中获取所需值
     struct FastDatX : DatX
     {
+    public:
         FastDatX(void* pMem, int nLen = 0)
         {
             __is_valid__ = Hook(pMem, nLen);
