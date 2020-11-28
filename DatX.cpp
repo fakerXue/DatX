@@ -7,11 +7,6 @@ DatX::DatX()
     Build(nullptr, 0);
 }
 
-DatX::DatX(void* pMem, int nLen)
-{
-    Build(pMem, nLen);
-}
-
 DatX::DatX(const char* szKey, const char* szFmt, ...)
 {
     va_list body;
@@ -124,9 +119,6 @@ DatX& DatX::_Put(const char* szKey, const char* szFmt, va_list body)
 
 DatX::XTY DatX::__Put(const char* szKey, char t, unsigned int nBin, void* pBin)
 {
-#if 0 // 暂时废弃__type__，使之支持混杂数组，后续看是否有必要开启
-    __type__ = '?';
-#else
     if (__cnt__ == 0)
     { // 只在添加首个元素时设定当前节点类型
         if (szKey == nullptr || szKey[0] == 0)
@@ -146,7 +138,6 @@ DatX::XTY DatX::__Put(const char* szKey, char t, unsigned int nBin, void* pBin)
             __type__ = 'K';
         }
     }
-#endif
 
     const char *pKey = (szKey?szKey:"\0");
     int klen = strlen(pKey) + 1;
@@ -197,11 +188,6 @@ DatX& DatX::Add(double dVal)
     return Put("", dVal);
 }
 
-//DatX& DatX::Add(char* sVal)
-//{
-//    return Put("", sVal);
-//}
-
 DatX& DatX::Add(const char* szFmt, ...)
 {
     if (szFmt == nullptr)
@@ -233,7 +219,7 @@ void DatX::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
     int diff = xlen - len;
 
     DatX* p_root = this;
-    while (p_root->__parent__)
+    while (p_root->__parent__ && p_root->__parent__ != p_root) // 当通过拷贝函数得来的根节点时，会出现__parent__ == this
     {
         p_root->__len__ += diff;
         *(unsigned int*)p_root->__mem__ = p_root->__len__; // 更新当前节点__len__
@@ -298,6 +284,11 @@ void DatX::Clear()
     __cnt__ = 0;
 }
 
+bool DatX::IsArr()
+{
+    return (__type__ == 'V');
+}
+
 DatX DatX::operator[](const char* szKey)
 {
     return (*this)[Get(szKey).i];
@@ -313,14 +304,15 @@ DatX DatX::operator[](int iKey)
         if ((x.t == 'V' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
         {
             dx.__parent__ = this;
-            dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
-            dx.__len__ = x.n;
-            dx.__cap__ = x.n;
+            dx.__mem__ = x.v;
+            dx.__cap__ = dx.__len__ = x.n;
         }
+#if 0
         else
         { // 置空
             move_memory(&x.v, x.n, sizeof(DatX::__len__) + sizeof(DatX::__type__));
         }
+#endif
     }
 #if 0
     else
@@ -337,7 +329,7 @@ DatX DatX::operator[](int iKey)
 
     return dx;
 }
-#if 1
+
 DatX DatX::operator()(const char* szKey)
 {
     return (*this)(Get(szKey).i);
@@ -346,38 +338,35 @@ DatX DatX::operator()(const char* szKey)
 DatX DatX::operator()(int iKey)
 {
     DatX dx;
+    dx.__parent__ = this;
+    dx.__type__ = 'K';
     XTY x = Get(iKey);
     if (x.IsValid())
     {
-        dx.__type__ = 'K';
         if ((x.t == 'K' || x.IsNull()) && DatX::IsValid((void*)x.v, x.n, &dx.__cnt__))
         {
-            dx.__parent__ = this;
-            dx.__mem__ = (unsigned int)x.v; // 与()的不同之处
-            dx.__len__ = x.n;
-            dx.__cap__ = x.n;
+            dx.__mem__ = (unsigned int)x.v;
+            dx.__cap__ = dx.__len__ = x.n;
         }
         else
         { // 置空
-            move_memory(&x.v, x.n, sizeof(DatX::__len__) + sizeof(DatX::__type__));
+            dx.__cap__ = dx.__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+            move_memory(&x.v, x.n, dx.__len__);
+            dx.__mem__ = (unsigned int)x.v;
         }
     }
-#if 0
     else
     {
         unsigned int len = sizeof(DatX::__len__) + sizeof(DatX::__type__);
         unsigned char val[sizeof(DatX::__len__) + sizeof(DatX::__type__)];
         *((unsigned int*)&(val[0])) = len;
         val[sizeof(DatX::__len__)] = 'K'; // 新的节点默认设置为K型
-        XTY x = __Put(szKey, 'K', len, val); // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
-        dx.__mem__ = x.v;
-        dx.__cap__ = dx.__len__ = sizeof(DatX::__len__) + sizeof(DatX::__type__);
+        dx.__mem__ = __Put(x.k, 'K', len, val).v; // 新增一个值为sizeof(DatX::__len__) + sizeof(DatX::__type__)的键值对
+        dx.__cap__ = dx.__len__ = len;
     }
-#endif
 
     return dx;
 }
-#endif
 
 DatX::XTY DatX::Get(unsigned int iKey)
 {
@@ -464,3 +453,21 @@ bool DatX::IsValid(void* pMem, int nLen, unsigned int* pnCnt)
     return true;
 }
 
+DatX::DatX(const DatX& dx)
+{
+    memcpy(this, &dx, sizeof(DatX));
+    if (dx.__parent__ == nullptr)
+    {
+        this->__parent__ = this; // 防止析构
+    }
+}
+
+DatX& DatX::operator=(const DatX& dx)
+{
+    memcpy(this, &dx, sizeof(DatX));
+    if (dx.__parent__ == nullptr)
+    {
+        this->__parent__ = this; // 防止析构
+    }
+    return *this;
+}
