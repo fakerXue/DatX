@@ -5,6 +5,18 @@ using namespace x2lib;
 int main()
 {
     MemJson dx;
+	{
+		const char *pJson01 = R"({"aaa":521,"bbb":13.14,"ccc":"hello"})";
+		const char *pJson02 = R"(["elem0","elem1","elem2"])";
+		const char *pJson03 = R"({"aaa":521,"bbb":13.14,"ccc":"hello","ddd":["elem0","elem1","elem2"]})";
+		dx.Parse(pJson01);
+		dx("ccc").Parse(pJson02);
+		char szJson[1024] = { 0 };
+		dx.Print(szJson, 2048, false);
+		printf("\t[MemJson->Json]: \n%s\n", szJson);
+		printf("\t[MemJson->Json]: \n%s\n", szJson);
+	}
+
     printf("添加100个int元素，100个double元素，100个string元素：\n");
     for (int i = 0; i < 100; i++)
     {
@@ -24,11 +36,18 @@ int main()
         sprintf(szKey, "szKey_string_%d", i);
         dx.Put(szKey, "%s_%d", "hello_string", i);
     }
+
     printf("添加完成，打印结果：\n");
     printf("\t第10~14个元素：%d, %d, %d, %d, %d\n", dx.Get(10).I, dx.Get(11).I, dx.Get(12).I, dx.Get(13).I, dx.Get(14).I);
     printf("\t第110~114个元素：%.6f, %.6f, %.6f, %.6f, %.6f\n", dx.Get(110).F, dx.Get(111).F, dx.Get(112).F, dx.Get(113).F, dx.Get(114).F);
     printf("\t第210~214个元素：%s, %s, %s, %s, %s\n", dx.Get(210).S, dx.Get(211).S, dx.Get(212).S, dx.Get(213).S, dx.Get(214).S);
     printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
+
+	printf("\n\n");
+	printf("覆盖第50~54个元素，"); dx.Put("szKey_50", "override_50"); dx.Put("szKey_51", "override_51"); dx.Put("szKey_52", "override_52"); dx.Put("szKey_53", "override_53"); dx.Put("szKey_54", "override_54");
+	printf("覆盖第150~154个元素，"); dx.Put("szKey_150", "override_150"); dx.Put("szKey_151", "override_151"); dx.Put("szKey_152", "override_152"); dx.Put("szKey_153", "override_153"); dx.Put("szKey_154", "override_154");
+	printf("覆盖第250~254个元素\n"); dx.Put("szKey_250", "override_250"); dx.Put("szKey_251", "override_251"); dx.Put("szKey_252", "override_252"); dx.Put("szKey_253", "override_253"); dx.Put("szKey_254", "override_254");
+	printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
 
     printf("\n\n");
     printf("删除第220~224个元素，"); dx.Del(224); dx.Del(223); dx.Del(222); dx.Del(221); dx.Del(220);
@@ -168,7 +187,7 @@ int main()
         printf("直接由MemJson转“Json”:\n%s\n", szJson);
         printf("\t内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", memJson.Mem(), memJson.Len(), memJson.Cnt());
     }
-    printf("\n\n");
+    printf("\n-------------------------------演示结束-------------------------------\n");
 
     getchar();
 

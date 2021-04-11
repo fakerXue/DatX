@@ -36,6 +36,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <malloc.h>
+#include <stdlib.h>
 
 #define __SUPPORT_STD_JSON__ 1 // 是否支持标准json
 
@@ -64,6 +65,9 @@ namespace x2lib
             double F; // 导出为float型
             char *S; // 导出为char*型
             friend class MemJson;
+
+            int stoI() { return atoi(S); }
+            double stoF() { return atof(S); }
 
             XTY(unsigned int _k_mem = 0)
             {
@@ -104,6 +108,7 @@ namespace x2lib
         MemJson(unsigned int _mem_, unsigned int _len_);
         MemJson(const char* szKey, const char* szFmt, ...);
         MemJson(const char* szKey, int nBin, void* pBin);
+		MemJson(const char* pszJson);
         ~MemJson(); // 构造函数使用了memset，禁止设为virtual
 
                  // 获取数据内存起始地址
@@ -261,7 +266,7 @@ namespace x2lib
         *************************************************************************/
         void move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen);
         MemJson& _Put(const char* szKey, const char* szFmt, va_list body);
-        MemJson::XTY __Put(const char* szKey, char t, unsigned int nBin, void* pBin);
+		unsigned int __Put(const char* szKey, char t, unsigned int nBin, void* pBin);
 
         static const unsigned int COB = 1024; // 内存增长最小值
         static const unsigned int GC_SIZE = COB * 4; // 内存回收最小值
