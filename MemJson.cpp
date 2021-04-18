@@ -5,36 +5,28 @@ namespace x2lib
 {
     MemJson::MemJson()
     {
-        Build(nullptr, 0);
+		init();
     }
 
-    MemJson::MemJson(const MemJson& dx)
-    {
-        memcpy(this, &dx, sizeof(MemJson));
-        if (dx.__parent__ == nullptr)
-        {
-            this->__parent__ = this; // 防止析构
-        }
-    }
-
-    MemJson& MemJson::operator=(const MemJson& dx)
-    {
-        memcpy(this, &dx, sizeof(MemJson));
-        if (dx.__parent__ == nullptr)
-        {
-            this->__parent__ = this; // 防止析构
-        }
-        return *this;
-    }
-
-    MemJson::MemJson(unsigned int _mem_, unsigned int _len_)
-    {
-        Build((void*)_mem_, _len_);
-    }
+    //MemJson::MemJson(const MemJson& mj, bool mjAsRoot)
+    //{
+	//	if (mjAsRoot)
+	//	{
+	//		memset(this, 0, sizeof(MemJson));
+	//		__parent__ = const_cast<MemJson*>(&mj);
+	//		__mem__ = mj.Len();
+	//	}
+	//	else
+	//	{
+	//		memcpy(this, &mj, sizeof(MemJson));
+	//		__mem__ = (uint32_t)malloc(__cap__);
+	//		memcpy((void*)__mem__, (void*)mj.Mem(), mj.Len());
+	//	}
+    //}
 
     MemJson::MemJson(const char* szKey, const char* szFmt, ...)
     {
-        Build(nullptr, 0);
+		init();
         va_list body;
         va_start(body, szFmt);
         _Put(szKey, szFmt, body);
@@ -43,19 +35,14 @@ namespace x2lib
 
     MemJson::MemJson(const char* szKey, int nBin, void* pBin)
     {
-        Build(nullptr, 0);
+		init();
         __Put(szKey, 'H', nBin, pBin);
-    }
-    
-	MemJson::MemJson(const char* pszJson)
-    {
-        Parse(pszJson);
     }
 
     MemJson::~MemJson()
     {
-        if (__parent__ == nullptr)
-        { // 对根节点进行释放
+		if(IsRoot() && 0 != __cap__)
+        { // 仅对对象型根节点进行释放（引用型节点__cap__==0）
             free((void*)__mem__);
         }
         if (__buff__ != nullptr)
@@ -64,27 +51,91 @@ namespace x2lib
         }
     }
 
-    unsigned int MemJson::Mem() const
+	MemJson::MemJson(uint32_t mem)
+	{
+		__cap__ = *(uint32_t*)mem;
+		__mem__ = (uint32_t)malloc(__cap__);
+		memcpy((void*)__mem__, (void*)mem, __cap__);
+		__parent__ = nullptr;
+		__err__ = 0;
+		__buff__ = nullptr;
+		MemJson::Check((void*)__mem__, &__cnt__);
+	}
+
+	MemJson::MemJson(uint64_t parent_mem)
+	{
+		memset(this, 0, sizeof(MemJson)); // 引用的__cap__必须设为0
+		__parent__ = (MemJson*)((parent_mem & 0xFFFFFFFF00000000)>>32);
+		__mem__ = (uint32_t)(parent_mem & 0x00000000FFFFFFFF);
+		MemJson::Check((void*)__mem__, &__cnt__);
+	}
+
+	MemJson MemJson::Clone()
+	{
+		return (uint32_t)__mem__;
+	}
+
+	MemJson MemJson::Quote()
+	{
+		if (IsRoot()) // 如何处理引用的引用...？
+		{
+			return ((uint64_t)this << 32 | __mem__);
+		}
+		return ((uint64_t)__parent__ << 32 | __mem__);
+	}
+
+	//MemJson MemJson::Copy()
+	//MemJson MemJson::Move()
+
+	bool MemJson::IsRoot() const
+	{
+		return (nullptr == __parent__);
+	}
+
+	bool MemJson::IsQuote() const
+	{
+		return (__parent__ && __parent__->__mem__ == __mem__);
+	}
+
+	const MemJson* MemJson::GetRoot() const
+	{
+		const MemJson* p_root = this;
+		while (p_root->__parent__)
+		{
+			p_root = p_root->__parent__;
+		}
+		return p_root;
+	}
+
+    uint32_t MemJson::Mem() const
     {
-        return __mem__;
+		//if (IsRoot()) { return __mem__; }
+		//else {return (GetRoot()->Mem() + __mem__);}
+		return __mem__;
     }
 
-    unsigned int MemJson::Len() const
+    uint32_t MemJson::Len() const
     {
-        return __len__;
+		uint32_t* p_len = (uint32_t*)Mem();
+		//if (IsRoot() || __cnt__ > 0)
+		//{
+		//	return *p_len;
+		//}
+		//return 0;
+		return *p_len;
     };
 
-    unsigned int MemJson::Cnt() const
+    uint32_t MemJson::Cnt() const
     {
         //if (__cnt__ == 0)
         //{
         //	XTY x_temp(__mem__);
-        //	for (unsigned int i = 0;; ++i)
+        //	for (uint32_t i = 0;; ++i)
         //	{
-        //		if (((unsigned int)x_temp.p - __mem__) + x_temp.n >= __len__)
+        //		if (((uint32_t)x_temp.p - __mem__) + x_temp.n >= __len__)
         //			return i; // 已经到最后一个键
         //		int xvlen = strlen(x_temp.k) + 1 + sizeof(x_temp.n) + x_temp.n;
-        //		x_temp.Read(xvlen + ((unsigned int)x_temp.k), i);
+        //		x_temp.Read(xvlen + ((uint32_t)x_temp.k), i);
         //	}
         //}
         return __cnt__;
@@ -131,7 +182,7 @@ namespace x2lib
         return *this;
     }
 
-    MemJson& MemJson::Put(const char* szKey, unsigned int nBin, void* pBin)
+    MemJson& MemJson::Put(const char* szKey, uint32_t nBin, void* pBin)
     {
         __Put(szKey, 'H', nBin, pBin);
         return *this;
@@ -153,50 +204,28 @@ namespace x2lib
         return *this;
     }
 
-	unsigned int MemJson::__Put(const char* szKey, char t, unsigned int nBin, void* pBin)
+	uint32_t MemJson::__Put(const char* szKey, char t, uint32_t nBin, void* pBin)
 	{
-		if (__cnt__ == 0)
-		{ // 只在添加首个元素时设定当前节点类型
-			if (szKey == nullptr || szKey[0] == 0)
-			{ // Add
-			  //if (__type__ != 'V' && __type__ != '?')
-			  //{
-			  //    return *(MemJson*)nullptr; // 强制程序崩溃
-			  //}
-				__type__ = 'V';
-			}
-			else
-			{ // Put
-			  //if (__type__ != 'K' && __type__ != '?')
-			  //{
-			  //    return *(MemJson*)nullptr; // 强制程序崩溃
-			  //}
-				__type__ = 'K';
-			}
-		}
-
 		const char *pKey = (szKey ? szKey : "\0");
 		int klen = strlen(pKey) + 1;
-		unsigned int newlen = klen + sizeof(XTY::t) + sizeof(XTY::n) + nBin;
-		unsigned int p_mem = 0;
+		uint32_t newlen = klen + sizeof(XTY::t) + sizeof(XTY::n) + nBin;
+		uint32_t p_mem = 0;
 
-		XTY x = this->Get(pKey);
+		XTY x = Get(pKey);
 		if (x.IsValid())
 		{
 			p_mem = x._p_;
-			move_memory(&p_mem, x._n_, newlen);
+			move_memory(&p_mem, x._n_, newlen); // p_mem传入的是x.k的起始值，因此后面需要重新修正x.k
 		}
 		else
 		{
-			if (__mem__ == 0/* || __len__ == 0*/) newlen += sizeof(MemJson::__len__) + sizeof(MemJson::__type__); // 根节点首次申请内存
-			p_mem = __mem__ + __len__;
-			move_memory(&p_mem, 0, newlen);
-			memcpy((void*)p_mem, pKey, klen);
+			p_mem = __mem__ + (*(uint32_t*)__mem__); // ????
 			++__cnt__;
+			move_memory(&p_mem, 0, newlen);
 		}
-
+		memcpy((void*)p_mem, pKey, klen);
 		*(char*)(p_mem + klen) = t;
-		*(unsigned int*)(p_mem + klen + sizeof(XTY::t)) = nBin;
+		*(uint32_t*)(p_mem + klen + sizeof(XTY::t)) = nBin;
 		memcpy((void*)(p_mem + klen + sizeof(XTY::t) + sizeof(XTY::n)), pBin, nBin);
 
         return p_mem;
@@ -204,7 +233,7 @@ namespace x2lib
 
     MemJson& MemJson::Put(const char* szKey, MemJson& dx)
     {
-        __Put(szKey, dx.__type__, dx.Len(), (void*)dx.Mem());
+        __Put(szKey, 'M', dx.Len(), (void*)dx.Mem());
         return *this;
     }
 
@@ -239,7 +268,7 @@ namespace x2lib
         return *this;
     }
 
-    MemJson& MemJson::Add(unsigned int nBin, void* pBin)
+    MemJson& MemJson::Add(uint32_t nBin, void* pBin)
     {
         return Put("", nBin, pBin);
     }
@@ -249,50 +278,64 @@ namespace x2lib
         return Put("", dx);
     }
 
-    void MemJson::move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen)
+    void MemJson::move_memory(uint32_t* p_mem, uint32_t len, uint32_t xlen)
     {
         int diff = xlen - len;
 
         MemJson* p_root = this;
-        while (p_root->__parent__ && p_root->__parent__ != p_root) // 当通过拷贝函数得来的根节点时，会出现__parent__ == this
-        {
-            p_root->__len__ += diff;
-            *(unsigned int*)p_root->__mem__ = p_root->__len__; // 更新当前节点__len__
-            *(unsigned int*)(p_root->__mem__ - sizeof(XTY::n)) = p_root->__len__; // 更新当前节点在所属XTY的n
-            p_root->__cap__ = p_root->__len__; // 非根节点保持__cap__==__len__
+        while (p_root->__parent__ && p_root->__parent__->__mem__ != p_root->__mem__) // p_root->__parent__->__mem__ == p_root->__mem__表示this是根节点的引用
+        { // 处理当前链所有子节点，根节点留在while外处理
+			uint32_t* p_len = (uint32_t*)p_root->__mem__;
+			p_root->__cap__ = *p_len + diff;
+            *p_len = p_root->__cap__; // 更新当前节点的__len__
+            *(uint32_t*)(p_root->__mem__ - sizeof(XTY::n)) = p_root->__cap__; // 更新当前节点在所属XTY的n
             p_root = p_root->__parent__;
         }
+
+		MemJson* p_rroot = nullptr;
+		if (IsQuote())
+		{
+			p_rroot = p_root;
+			p_root = p_root->__parent__;
+		}
 
         // 搬运数据，经过上面的迭代，以下代码只针对根节点操作
         if (diff < 0)
         { // 数据收缩，前移mem+len处的数据
-            memmove((void*)((*p_mem) + xlen), (void*)((*p_mem) + len), p_root->__len__ - ((*p_mem) + len - p_root->__mem__));
-            p_root->__len__ += diff;
-            *(unsigned int*)p_root->__mem__ = p_root->__len__;
-            int _collect_bytes = p_root->__cap__ - p_root->__len__;
+			uint32_t* p_len = (uint32_t*)p_root->__mem__;
+            memmove((void*)((*p_mem) + xlen), (void*)((*p_mem) + len), *p_len - ((*p_mem) + len - p_root->__mem__));
+			*p_len += diff;
+            int _collect_bytes = p_root->__cap__ - *p_len;
             if (_collect_bytes > MemJson::GC_SIZE)
             { // 垃圾回收
                 _collect_bytes -= (MemJson::GC_SIZE * (_collect_bytes / MemJson::GC_SIZE));
                 p_root->__cap__ -= _collect_bytes;
-                realloc((void*)__mem__, __cap__);
+				p_root->__mem__ = (uint32_t)realloc((void*)p_root->__mem__, p_root->__cap__); // 收缩数据一般不会改变内存指针
             }
         }
         else if (diff > 0)
         { // 数据扩充，后移mem处的数据
-            unsigned int newlen = p_root->__len__ + diff;
-            unsigned int __mem__ofs_ = (*p_mem) - p_root->__mem__; // 计算偏移，因为realloc后__mem__可能会变
-            if (newlen > p_root->__cap__)
+			uint32_t* p_len = (uint32_t*)p_root->__mem__;
+            uint32_t len_old = *p_len;
+            *p_len += diff;
+            uint32_t ofs = (*p_mem) - p_root->__mem__; // 计算偏移，因为realloc后__mem__可能会变
+            if (*p_len > p_root->__cap__)
             {
                 p_root->__cap__ += (diff > MemJson::COB ? diff : MemJson::COB);
-                p_root->__mem__ = (unsigned int)realloc((void*)p_root->__mem__, p_root->__cap__);
+                p_root->__mem__ = (uint32_t)realloc((void*)p_root->__mem__, p_root->__cap__);
+                p_len = (uint32_t*)p_root->__mem__;
             }
-            *(unsigned int*)p_root->__mem__ = newlen; // 只能放在realloc后，使得可以处理未初始化的根节点
-            if ((*p_mem) == 0) { (*p_mem) = p_root->__mem__ + sizeof(MemJson::__len__) + sizeof(MemJson::__type__); }
-            else { (*p_mem) = p_root->__mem__ + __mem__ofs_; }  // 更新并回传给调用者
-
-            if (len != 0) { memmove((void*)((*p_mem) + xlen), (void*)(*p_mem), p_root->__len__ - __mem__ofs_); }
-            p_root->__len__ = newlen;
+            (*p_mem) = p_root->__mem__ + ofs;  // 更新并回传给调用者
+            
+            if (len != 0) { memmove((void*)((*p_mem) + xlen), (void*)((*p_mem) + len), len_old - ofs - len); }
         }
+
+		if (p_rroot)
+		{
+			//p_rroot->__cap__ = 0; // p_root->__cap__;
+			p_rroot->__mem__ = p_root->__mem__;
+			p_root->__cnt__ = p_rroot->__cnt__;
+		}
     }
 
     bool MemJson::Del(const char *szKey)
@@ -306,130 +349,77 @@ namespace x2lib
         XTY x = this->Get(iKey);
         if (x.IsValid())
         {
-            move_memory(&x._p_, x._n_, 0); // 一旦x._p_被move_memory更改，则x失效
             --__cnt__;
+            move_memory(&x._p_, x._n_, 0); // 一旦x._p_被move_memory更改，则x失效
             return true;
         }
         return false;
     }
 
     void MemJson::Clear()
-    {       
-		//move_memory(&__mem__, __len__, sizeof(MemJson::__len__) + sizeof(MemJson::__type__));
-		move_memory(&__mem__, __len__, 0);
-		//*(char*)(__mem__ + sizeof(MemJson::__len__)) = 'K';
-		//*(unsigned int*)(__mem__) = sizeof(MemJson::__len__) + sizeof(MemJson::__type__);
+    {
         __cnt__ = 0;
+		move_memory(&__mem__, Len(), MemJson::MIN_LEN);
     }
 
     bool MemJson::IsArr()
     {
-        return (__type__ == 'V');
+		return !(__cnt__ > 0 && Get((uint32_t)0).k[0]);
     }
+
+	bool MemJson::IsJSON()
+	{
+		return true;
+	}
 
     MemJson MemJson::operator[](const char* szKey)
     {
-        return (*this)[Get(szKey).i];
+        return (*this)[Get(szKey).i]; // ???
     }
 
     MemJson MemJson::operator[](int iKey)
     {
-        MemJson dx;
         XTY x = Get(iKey);
-        if (x.IsValid())
+        if (x.IsValid() && x.t == 'M')
         {
-            if ((x.t == 'K' || x.t == 'V') && MemJson::IsValid((void*)x.v, x.n, &dx.__cnt__))
-            {
-                dx.__parent__ = this;
-                dx.__type__ = x.t;
-                dx.__mem__ = x.v;
-                dx.__cap__ = dx.__len__ = x.n;
-            }
-#if 0
-            else
-            { // 置空
-                move_memory(&x.v, x.n, sizeof(MemJson::__len__) + sizeof(MemJson::__type__));
-            }
-#endif
+			return (uint64_t)(((uint64_t)this <<32) | x.v);
         }
-#if 0
-        else
-        {
-            unsigned int len = sizeof(MemJson::__len__) + sizeof(MemJson::__type__);
-            unsigned char val[sizeof(MemJson::__len__) + sizeof(MemJson::__type__)];
-            *((unsigned int*)&(val[0])) = len;
-            val[sizeof(MemJson::__len__)] = 'K'; // 新的节点默认设置为K型
-            XTY x = __Put(szKey, 'V', len, val); // 新增一个值为sizeof(MemJson::__len__) + sizeof(MemJson::__type__)的键值对
-            dx.__mem__ = x.v;
-            dx.__cap__ = dx.__len__ = sizeof(MemJson::__len__) + sizeof(MemJson::__type__);
-        }
-#endif
-
-        return dx;
+        return (uint64_t)0;
     }
 
     MemJson MemJson::operator()(const char* szKey)
     {
-        return (*this)(Get(szKey).i);
-    }
-
-    MemJson MemJson::operator()(int iKey)
-    {
-        MemJson dx;
-        dx.__parent__ = this;
-        XTY x = Get(iKey);
-        if (x.IsValid())
-        {
-            dx.__type__ = x.t;
-            if ((x.t == 'K' || x.t == 'V' || x.IsNull()) && MemJson::IsValid((void*)x.v, x.n, &dx.__cnt__))
-            {
-                dx.__mem__ = (unsigned int)x.v;
-                dx.__cap__ = dx.__len__ = x.n;
-            }
-            else
-            { // 置空
-                dx.__cap__ = dx.__len__ = sizeof(MemJson::__len__) + sizeof(MemJson::__type__);
-                move_memory(&x.v, x.n, dx.__len__);
-                dx.__mem__ = (unsigned int)x.v;
-            }
-        }
-        else
-        {
-            unsigned int len = sizeof(MemJson::__len__) + sizeof(MemJson::__type__);
-            unsigned char val[sizeof(MemJson::__len__) + sizeof(MemJson::__type__)];
-            *((unsigned int*)&(val[0])) = len;
-            val[sizeof(MemJson::__len__)] = 'K'; // 新的节点默认设置为K型
-			unsigned int p_mem = __Put(x.k, 'K', len, val);
+		XTY x = Get(szKey);
+		if (!x.IsValid() || x.t != 'M')
+		{
+			uint32_t p_mem = __Put(szKey, 'M', MemJson::MIN_LEN, (void*)&MemJson::MIN_LEN);
 			x.Read(p_mem, __cnt__ - 1);
-            dx.__mem__ = x.v; // 新增一个值为sizeof(MemJson::__len__) + sizeof(MemJson::__type__)的键值对
-            dx.__cap__ = dx.__len__ = len;
-        }
-
-        return dx;
+		}
+		return (uint64_t)(((uint64_t)this << 32) | x.v);
     }
 
-    MemJson::XTY MemJson::Get(unsigned int iKey)
+    MemJson::XTY MemJson::Get(uint32_t iKey) const
     {
         if (__mem__ != 0 && iKey >= 0 && iKey < __cnt__)
         {
-            XTY x_temp(__mem__ + sizeof(MemJson::__len__) + sizeof(MemJson::__type__));
-            for (unsigned int i = 0;;)
+            XTY x_temp(__mem__ + MemJson::MIN_LEN);
+            for (uint32_t i = 0;;)
             {
                 if (i == iKey) return x_temp;
                 if (++i >= __cnt__) break;
-                x_temp.Read((unsigned int)x_temp._p_ + x_temp._n_, i);
+                x_temp.Read((uint32_t)x_temp._p_ + x_temp._n_, i);
             }
         }
 
         return XTY();
     }
 
-    MemJson::XTY MemJson::Get(const char* szKey)
+    MemJson::XTY MemJson::Get(const char* szKey) const
     {
-        if (szKey && szKey[0] && __mem__ != 0 && __cnt__ != 0)
+        if (szKey && szKey[0] && __cnt__ != 0)
         {
-            XTY x_temp(__mem__ + sizeof(MemJson::__len__) + sizeof(MemJson::__type__));
-            for (unsigned int i = 0;;)
+            XTY x_temp(__mem__ + MemJson::MIN_LEN);
+            for (uint32_t i = 0;;)
             {
                 if (!x_temp.IsValid())
                     break;
@@ -437,7 +427,7 @@ namespace x2lib
                     return x_temp;
                 if (++i >= __cnt__)
                     break;
-                x_temp.Read((unsigned int)x_temp._p_ + x_temp._n_, i);
+                x_temp.Read((uint32_t)x_temp._p_ + x_temp._n_, i);
             }
         }
 
@@ -449,47 +439,71 @@ namespace x2lib
         return __err__;
     }
 
-    bool MemJson::Build(void* pMem, int nLen)
-    {
-        if (!MemJson::IsValid(pMem, nLen, &__cnt__))
-        {
-            memset(this, 0, sizeof(MemJson));
-            return false;
-        }
-        move_memory(&__mem__, __len__, nLen); // 待验证！！！！
-        memcpy((void*)__mem__, pMem, nLen);
-        __len__ = nLen;
-        __type__ = *(char*)(__mem__ + sizeof(MemJson::__len__) + sizeof(MemJson::__type__));
-        return true;
-    }
-
     bool MemJson::IsValid()
     {
-        return MemJson::IsValid((void*)__mem__, __len__, &__cnt__);
+        return MemJson::Check((void*)__mem__, &__cnt__);
     }
 
-    bool MemJson::IsValid(void* pMem, int nLen, unsigned int* pnCnt)
-    {
-        if (pnCnt != nullptr) *pnCnt = 0;
-        if (!pMem || nLen == 0 || (*(unsigned int*)pMem) != nLen)
-            return false;
+	void MemJson::init()
+	{
+		memset(this, 0, sizeof(MemJson));
+		__cap__ = MemJson::MIN_LEN;
+		__mem__ = (uint32_t)malloc(__cap__);
+		*(uint32_t*)__mem__ = MemJson::MIN_LEN;
+	}
 
-        XTY x_temp((unsigned int)pMem + sizeof(MemJson::__len__) + sizeof(MemJson::__type__));
-        unsigned int i = 0;
-        int sumlen = sizeof(MemJson::__len__) + sizeof(MemJson::__type__);
+	//bool MemJson::build(void* pMem, int nLen)
+	//{
+	//	if (!pMem || 0 == nLen)
+	//	{
+	//		__cap__ = MemJson::MIN_LEN;
+	//	}
+
+
+	//	if (!MemJson::IsValid(pMem, nLen, &__cnt__))
+	//	{
+	//		__mem__ = (uint32_t)realloc((void*)__mem__, sizeof(MemJson::__len__));
+	//		if (__buff__) { free((void*)__buff__); __buff__ = nullptr; }
+	//		__cap__ = __len__ = sizeof(MemJson::__len__);
+	//		__parent__ = nullptr;
+	//		__cnt__ = __err__ = 0;
+	//		return false;
+	//	}
+	//	__parent__ = nullptr;
+	//	move_memory(&__mem__, __len__, nLen); // 待验证！！！！
+	//	memcpy((void*)__mem__, pMem, nLen);
+	//	__len__ = nLen;
+	//	return true;
+	//}
+
+    bool MemJson::Check(void* pMem, uint32_t* pnCnt)
+    {
+        if (!pMem) return false;
+
+
+		uint32_t cnt = 0;
+		uint32_t len = *(uint32_t*)pMem;
+		if (pMem && MemJson::MIN_LEN == len)
+		{
+			if (pnCnt != nullptr) *pnCnt = 0;
+			return true;
+		}
+
+        XTY x_temp((uint32_t)pMem + MemJson::MIN_LEN);
+        int sumlen = MemJson::MIN_LEN;
         do
         {
             if (!x_temp.IsValid())
                 return false;
             sumlen += x_temp._n_;
-            if (sumlen > nLen) return false;
+            if (sumlen > len) return false;
 
-            ++i;
-            if (sumlen == nLen) break;
+            ++cnt;
+            if (sumlen == len) break;
 
-            x_temp.Read((unsigned int)pMem + sumlen, i);
+            x_temp.Read((uint32_t)pMem + sumlen, cnt);
         } while (true);
-        if (pnCnt != nullptr) *pnCnt = i;
+        if (pnCnt != nullptr) *pnCnt = cnt;
         return true;
     }
 
@@ -535,7 +549,7 @@ namespace x2lib
 
     void print_cJSON(MemJson* pMemJson, cJSON* item, bool prtBin)
     {
-        for (unsigned int i = 0; i < pMemJson->Cnt(); i++)
+        for (uint32_t i = 0; i < pMemJson->Cnt(); i++)
         {
             MemJson::XTY x = pMemJson->Get(i);
             char szMemKey[64] = { 0 };
@@ -547,9 +561,13 @@ namespace x2lib
             switch (x.t)
             {
             case 'N': cJSON_AddNullToObject(item, x.k); break;
-            case 'K':
-            { // 使用索引值访问pMemJson，不要使用键名，因为子元素可能无键名
-                print_cJSON((MemJson*)&((*pMemJson)(x.i)), cJSON_AddObjectToObject(item, x.k), prtBin);
+            case 'M':
+            {
+				cJSON* p_item = nullptr;
+				MemJson mj = (*pMemJson)[x.i];
+				if (mj.IsArr()) { p_item = cJSON_AddArrayToObject(item, x.k); } 
+				else { p_item = cJSON_AddObjectToObject(item, x.k); }
+                print_cJSON(&mj, p_item, prtBin);
             }break;
             case 'V':
             { // 使用索引值访问pMemJson，不要使用键名，因为子元素可能无键名
@@ -580,14 +598,6 @@ namespace x2lib
         cJSON* root = cJSON_Parse(pJson);
         if (root)
         {
-            if (root->type == cJSON_Object)
-            {
-                __type__ = 'K';
-            }
-            else if (root->type == cJSON_Array)
-            {
-                __type__ = 'V';
-            }
             parse_cJSON(this, root->child);
             cJSON_Delete(root);
             return true;
@@ -598,13 +608,13 @@ namespace x2lib
     bool MemJson::Print(char* pJson, int nJson, bool isFmt, bool prtBin)
     {
         cJSON* root = nullptr;
-        if (__type__ == 'K')
+        if (this->IsArr())
         {
-            root = cJSON_CreateObject();
+			root = cJSON_CreateArray();
         }
-        else if (__type__ == 'V')
+        else
         {
-            root = cJSON_CreateArray();
+			root = cJSON_CreateObject();
         }
         print_cJSON(this, root, prtBin);
 
@@ -617,7 +627,7 @@ namespace x2lib
     {
         if (pnJson) *pnJson = 0;
         if (__buff__ != nullptr) { free(__buff__); }
-        int buffsize = __len__ * 2;
+        int buffsize = this->Len() * 2;
         __buff__ = (char*)malloc(buffsize);
         if (Print(__buff__, buffsize, isFmt, prtBin))
         {

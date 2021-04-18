@@ -4,7 +4,7 @@
 ** All rights reserved.
 ** Name		: MemJson.h/cpp
 ** Desc		: 一种紧凑的数据结构，适合网络传输，配置存储等，一定程度上能替代json，读写均优于json，0秒解析
-**				内存结构如下： {MemJson::__len__,MemJson::__type__,[szKey01,xType01,nBin01,pBin01],[szKey02,xType02,nBin02,pBin02],...}
+**				根节点和子节点的内存结构均如下： {MemJson::__len__,[szKey01,xType01,nBin01,pBin01],[szKey02,xType02,nBin02,pBin02],...}
 **              万物皆KV对，普通元素[k,t,n,v]，无键名元素['\0',t,n,v]，有键名null元素[k,t,n,_]，无键名null元素['\0',t,n,_]；
 **              兼容所有json格式，如：
 **                  1.单级对象：{"aaa":521,"bbb":13.14,"ccc":"hello"}
@@ -25,7 +25,6 @@
 **              8.[s]：获取当前MemJson中键名为s的子节点；
 **              9.[i]：获取当前MemJson的第i个子节点；
 **              10.(s)：获取当前MemJson中键名为s的子节点，若不存在或非节点则进行创建或置空；
-**              11.(i)：获取当前MemJson的第i个子节点，若不存在或非节点则进行创建或置空；
 ** Author	: faker@2017-3-19 11:11:57
 *************************************************************************/
 
@@ -37,28 +36,32 @@
 #include <stdarg.h>
 #include <malloc.h>
 #include <stdlib.h>
+#include <stdint.h>
 
 #define __SUPPORT_STD_JSON__ 1 // 是否支持标准json
 
 namespace x2lib
 {
+	// 此类不应该存在virtual成员
     class MemJson
     {
     public:
         struct XTY
         {
+			// 有键无值
             bool IsNull() { return  (k != nullptr && v != 0 && n == 0 && t == 'N'); };
+
             bool IsValid() { return  (k != nullptr && v != 0); };
 
-            unsigned int _n_; // 当前键值对的总大小
+            uint32_t _n_; // 当前键值对的总大小
             union
             {
-                unsigned int _p_; // 当前键值对的起始地址
-                char* k; // 指向键名，对于MemJson::__type__=='V'，k始终指向'\0'
+                uint32_t _p_; // 当前键值对的起始地址
+                char* k; // 指向键名，允许为'\0'，此时为无键名元素
             };
-            char t; // 值类型：['N',null],['I',int],['F',double],['B',bool],['S',string],['H',binary],['K',MemJson::__type__=='K'],['V',MemJson::__type__=='V']
-            unsigned int n; // 键值字节数
-            unsigned int v; // 键值地址
+            char t; // 值类型：['N',null],['I',int],['F',double],['B',bool],['S',string],['H',binary],['M',MemJson]
+            uint32_t n; // 键值字节数，若t=='N'则n==0
+            uint32_t v; // 键值地址
             int i; // 键的索引
 
             int I; // 导出为int型
@@ -69,14 +72,14 @@ namespace x2lib
             int stoI() { return atoi(S); }
             double stoF() { return atof(S); }
 
-            XTY(unsigned int _k_mem = 0)
+            XTY(uint32_t _k_mem = 0)
             {
                 Read(_k_mem, 0);
             };
 
         private:
             // iKey只用来设置
-            bool Read(unsigned int _k_mem, int iKey)
+            bool Read(uint32_t _k_mem, int iKey)
             {
                 memset(this, 0, sizeof(XTY));
                 i = -1;
@@ -86,7 +89,7 @@ namespace x2lib
                     k = (char*)_k_mem;
                     int klen = strlen(k) + 1;
                     t = *(char*)(_k_mem + klen);
-                    n = *(unsigned int*)(_k_mem + klen + sizeof(XTY::t));
+                    n = *(uint32_t*)(_k_mem + klen + sizeof(XTY::t));
                     v = _k_mem + klen + sizeof(XTY::t) + sizeof(XTY::n);
                     _n_ = klen + sizeof(XTY::t) + sizeof(XTY::n) + n;
 
@@ -102,28 +105,58 @@ namespace x2lib
         };
 
     public:
-        MemJson();
-        MemJson(const MemJson& dx);
-        MemJson& operator=(const MemJson& dx);
-        MemJson(unsigned int _mem_, unsigned int _len_);
-        MemJson(const char* szKey, const char* szFmt, ...);
-        MemJson(const char* szKey, int nBin, void* pBin);
-		MemJson(const char* pszJson);
+        MemJson(); // 初始化为根节点
+        //MemJson(const MemJson& mj, bool mjAsRoot = false); // 初始化为根节点或子节点
+        MemJson& operator=(const MemJson& dx) = delete; // 初始化为根节点
+        MemJson(const char* szKey, const char* szFmt, ...); // 初始化为根节点
+        MemJson(const char* szKey, int nBin, void* pBin); // 初始化为根节点
         ~MemJson(); // 构造函数使用了memset，禁止设为virtual
 
+		MemJson(uint32_t mem); // 仅提供给Clone调用；根节点==对象性对象
+
+		/*************************************************************************
+		** Desc     : 创建一个节点（可以是父节点）引用
+		** Param    : [in]
+		** Return   : 返回一个对象型MemJson对象
+		** Author   : faker@2021-4-18 13:22:56
+		*************************************************************************/
+		MemJson(uint64_t parent_mem); // 仅提供给Quote,(),[],=调用；子节点==引用型对象
+		//MemJson& operator=(uint32_t mem);
+
+		/*************************************************************************
+		** Desc     : 将当前节点（可以是子节点或根节点）克隆为一个根节点
+		** Param    : [in]
+		** Return   : 返回一个对象型MemJson对象
+		** Author   : faker@2021-4-18 13:22:56
+		*************************************************************************/
+		MemJson Clone();
+
+		/*************************************************************************
+		** Desc     : 返回当前节点（可以是子节点或根节点）的引用，具有时效性，若原对象发生改变则失效
+		** Param    : [in]
+		** Return   : 返回一个引用型MemJson对象
+		** Author   : faker@2021-4-18 13:20:27
+		*************************************************************************/
+		MemJson Quote();
+
+		bool IsRoot() const;
+
+		bool IsQuote() const;
+
+		const MemJson* GetRoot() const;
                  // 获取数据内存起始地址
-        unsigned int Mem() const;
+        uint32_t Mem() const;
         // 获取数据总字节数
-        unsigned int Len() const;
+        uint32_t Len() const;
         // 获取元素个数
-        unsigned int Cnt() const;
+        uint32_t Cnt() const;
 
         // 用于添加键值对，所有Put都返回当前MemJson对象
         MemJson& Put(const char* szKey, bool bVal);
         MemJson& Put(const char* szKey, int iVal);
         MemJson& Put(const char* szKey, double dVal);
         MemJson& Put(const char* szKey, const char* szFmt, ...); // 当szFmt=nullptr时添加一个名为szKey的null元素
-        MemJson& Put(const char* szKey, unsigned int nBin, void* pBin);
+        MemJson& Put(const char* szKey, uint32_t nBin, void* pBin);
         MemJson& Put(const char* szKey, MemJson& dx);
 
         // 用于添加数组元素，所有Add都返回当前MemJson对象
@@ -131,7 +164,7 @@ namespace x2lib
         MemJson& Add(int iVal);
         MemJson& Add(double dVal);
         MemJson& Add(const char* szFmt, ...); // 当szFmt=nullptr时添加一个null元素
-        MemJson& Add(unsigned int nBin, void* pBin);
+        MemJson& Add(uint32_t nBin, void* pBin);
         MemJson& Add(MemJson& dx);
 
         /*************************************************************************
@@ -154,17 +187,25 @@ namespace x2lib
         void Clear();
 
         /*************************************************************************
-        ** Desc     : 判断当前节点是否为数组，仅对标准Json数据有效；
+        ** Desc     : 通过首个元素是否有键名判定是否为数组，例如首个元素无键名则认为是数组
         ** Param    : [in]
         ** Return   :
         ** Author   : faker@2020-11-22
         *************************************************************************/
         bool IsArr();
 
+		/*************************************************************************
+		** Desc     : 判定当前对象是否为标准json
+		** Param    : [in]
+		** Return   :
+		** Author   : faker@2021-4-11
+		*************************************************************************/
+		bool IsJSON();
+
         /*************************************************************************
         ** Desc     : 获取名为szKey的子节点，szKey对应的子节点必须存在
         ** Param    : [in] szKey
-        ** Return   : 返回得到的子节点，若子节点不存在，则返回一个无效MemJson
+        ** Return   : 返回子节点引用型对象，若子节点不存在，则引发程序异常
         ** Author   : faker@2020-11-12
         *************************************************************************/
         MemJson operator[](const char* szKey);
@@ -172,7 +213,7 @@ namespace x2lib
         /*************************************************************************
         ** Desc     : 获取第iKey个子节点，szKey对应的子节点必须存在
         ** Param    : [in] iKey
-        ** Return   : 返回得到的子节点，若子节点不存在，则返回一个无效MemJson
+        ** Return   : 返回子节点引用型对象，若子节点不存在，则引发程序异常
         ** Author   : faker@2020-11-12
         *************************************************************************/
         MemJson operator[](int iKey);
@@ -186,20 +227,12 @@ namespace x2lib
         MemJson operator()(const char* szKey);
 
         /*************************************************************************
-        ** Desc     : 获取第iKey个子节点，当子节点不存在、null或为值类型时，将会清空或创建一个空节点
-        ** Param    : [in] iKey
-        ** Return   : 返回得到的子节点
-        ** Author   : faker@2020-11-12
-        *************************************************************************/
-        MemJson operator()(int iKey);
-
-        /*************************************************************************
         ** Desc     : 获取第iKey个元素，支持获取数组元素
         ** Param    : [in] iKey
         ** Return   :
         ** Author   : faker@2020-11-12 08:53:51
         *************************************************************************/
-        XTY Get(unsigned int iKey);
+        XTY Get(uint32_t iKey) const;
 
         /*************************************************************************
         ** Desc     : 获取名为szKey的元素，不支持获取数组元素
@@ -207,7 +240,7 @@ namespace x2lib
         ** Return   :
         ** Author   : faker@2020-11-12 08:53:51
         *************************************************************************/
-        XTY Get(const char* szKey);
+        XTY Get(const char* szKey) const;
 
         /*************************************************************************
         ** Desc     : 获取最后一次错误代码，为0表示正常
@@ -216,9 +249,6 @@ namespace x2lib
         ** Author   : faker@2020-11-12 08:53:51
         *************************************************************************/
         int LastError();
-
-        // 从另一个MemJson对象构建到本对象，相当于拷贝
-        bool Build(void* pMem, int nLen);
 
         bool IsValid();
 
@@ -244,6 +274,9 @@ namespace x2lib
         char* Print(bool isFmt, int* pnJson = nullptr, bool prtBin = false);
 #endif
     protected:
+		void init();
+		//bool build(void* pMem, int nLen); // 仅供构造函数调用（仅供根节点使用）
+
         /*************************************************************************
         ** Desc     : 只能尝试判断是否有效，且操作不当有可能会造成崩溃，最好使用win最好使用IsBadReadPtr判断
         ** Param    : [in] pMem
@@ -252,7 +285,7 @@ namespace x2lib
         ** Return   :
         ** Author   : faker@2020-11-12 08:53:51
         *************************************************************************/
-        static bool IsValid(void* pMem, int nLen, unsigned int* pnCnt = nullptr);
+        static bool Check(void* pMem, uint32_t* pnCnt = nullptr);
 
         /*************************************************************************
         ** Desc     : 移动数据，为将要添加或删除的键值对预留空间，所有的内存分配/释放都必须在此函数内进行；
@@ -264,24 +297,20 @@ namespace x2lib
         ** Return   :
         ** Author   : faker@2020-11-9 20:46:02
         *************************************************************************/
-        void move_memory(unsigned int* p_mem, unsigned int len, unsigned int xlen);
+        void move_memory(uint32_t* p_mem, uint32_t len, uint32_t xlen);
         MemJson& _Put(const char* szKey, const char* szFmt, va_list body);
-		unsigned int __Put(const char* szKey, char t, unsigned int nBin, void* pBin);
+		uint32_t __Put(const char* szKey, char t, uint32_t nBin, void* pBin);
 
-        static const unsigned int COB = 1024; // 内存增长最小值
-        static const unsigned int GC_SIZE = COB * 4; // 内存回收最小值
-        MemJson* __parent__; // 父节点
-        unsigned int __mem__; // 数据起始地址
-        unsigned int __len__; // 数据总大小，会保存在数据头部
-        unsigned int __cap__; // 预留内存容量
-        unsigned int __cnt__; // 当前节点共有多少个元素
-        unsigned int __err__; // 保持最后一次错误码，0表示无错误。【待实现】
+        static const uint32_t COB = 1024; // 内存增长最小值
+        static const uint32_t GC_SIZE = COB * 4; // 内存回收最小值
+		static const uint32_t MIN_LEN = sizeof(uint32_t); // 原__len__
+        MemJson* __parent__; // 父节点；根节点的__parent__=nullptr，子节点的__parent=parent
+        uint32_t __mem__; // 当前节点的内存地址
+        //uint32_t __len__; // 数据总大小，会保存在数据头部
+        uint32_t __cap__; // 预留内存容量，根节点一般__cap__>__len__，子节点必须__cap__==__len__
+        uint32_t __cnt__; // 当前节点共有多少个元素
+        uint32_t __err__; // 保持最后一次错误码，0表示无错误。【待实现】
 
-                              // 为K代表存储的是普通的KV对【对象形式】，为V代表存储的连续V值【数组形式】，新创建的MemJson默认为K型
-                              // __type__=='K': {__len__,__type__,[K,n,V],[K,n,V],...}
-                              // __type__=='V': {__len__,__type__,[0,n,V],[0,n,V],...}
-                              // __type__只在当前节点添加首个元素或使用()/[]强转时进行设置和判断
-        char __type__; // 为了能使用Parse/Print与Json互转【存在流元素和混杂数组时仍然会有问题】，需要启用__type__功能
         char* __buff__; // 提供给Print函数使用
     };
 
@@ -296,13 +325,12 @@ namespace x2lib
 
         bool Hook(void* pMem, int nLen = 0)
         {
-            if (nLen == 0) nLen = *(unsigned int*)pMem;
+            if (nLen == 0) nLen = *(uint32_t*)pMem;
 
-            __is_valid__ = MemJson::IsValid(pMem, nLen, &__cnt__);
+            __is_valid__ = MemJson::Check(pMem, &__cnt__);
             if (!__is_valid__)
                 return false;
-            __mem__ = (unsigned int)pMem;
-            __len__ = nLen;
+            __mem__ = (uint32_t)pMem;
             return true;
         }
 
@@ -311,7 +339,6 @@ namespace x2lib
         ~FastDatX()
         {
             __mem__ = 0;
-            __len__ = 0;
             __cnt__ = 0;
         }
 
@@ -320,13 +347,13 @@ namespace x2lib
         MemJson& Put(const char* szKey, float fVal) { return *this; }
         MemJson& Put(const char* szKey, char* sVal) { return *this; }
         MemJson& Put(const char* szKey, const char* szFmt, ...) { return *this; }
-        MemJson& Put(const char* szKey, unsigned int nBin, void* pBin) { return *this; }
+        MemJson& Put(const char* szKey, uint32_t nBin, void* pBin) { return *this; }
         MemJson& Put(const char* szKey, MemJson& dx) { return *this; }
         MemJson& Add(int iVal) { return *this; }
         MemJson& Add(float fVal) { return *this; }
         MemJson& Add(char* sVal) { return *this; }
         MemJson& Add(const char* szFmt, ...) { return *this; }
-        MemJson& Add(unsigned int nBin, void* pBin) { return *this; }
+        MemJson& Add(uint32_t nBin, void* pBin) { return *this; }
         MemJson& Add(MemJson& dx) { return *this; }
         bool Del(const char *szKey) { return false; }
         int LastError() { return __err__; }

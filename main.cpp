@@ -9,9 +9,15 @@ int main()
 		const char *pJson01 = R"({"aaa":521,"bbb":13.14,"ccc":"hello"})";
 		const char *pJson02 = R"(["elem0","elem1","elem2"])";
 		const char *pJson03 = R"({"aaa":521,"bbb":13.14,"ccc":"hello","ddd":["elem0","elem1","elem2"]})";
-		dx.Parse(pJson01);
-		dx("ccc").Parse(pJson02);
+
+		MemJson dx1 = dx.Quote();
+		dx1.Parse(pJson01);
+		dx1("ccc").Parse(pJson03);
+
 		char szJson[1024] = { 0 };
+		dx.Print(szJson, 2048, false);
+		dx1.Del("ccc");
+		dx.Del("aaa"); // 所有Quote均失效
 		dx.Print(szJson, 2048, false);
 		printf("\t[MemJson->Json]: \n%s\n", szJson);
 		printf("\t[MemJson->Json]: \n%s\n", szJson);
@@ -44,9 +50,9 @@ int main()
     printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
 
 	printf("\n\n");
-	printf("覆盖第50~54个元素，"); dx.Put("szKey_50", "override_50"); dx.Put("szKey_51", "override_51"); dx.Put("szKey_52", "override_52"); dx.Put("szKey_53", "override_53"); dx.Put("szKey_54", "override_54");
-	printf("覆盖第150~154个元素，"); dx.Put("szKey_150", "override_150"); dx.Put("szKey_151", "override_151"); dx.Put("szKey_152", "override_152"); dx.Put("szKey_153", "override_153"); dx.Put("szKey_154", "override_154");
-	printf("覆盖第250~254个元素\n"); dx.Put("szKey_250", "override_250"); dx.Put("szKey_251", "override_251"); dx.Put("szKey_252", "override_252"); dx.Put("szKey_253", "override_253"); dx.Put("szKey_254", "override_254");
+	printf("覆盖第50~54个元素，"); dx.Put("szKey_int_50", "override_50"); dx.Put("szKey_int_51", "override_51"); dx.Put("szKey_int_52", "override_52"); dx.Put("szKey_int_53", "override_53"); dx.Put("szKey_int_54", "override_54");
+	printf("覆盖第150~154个元素，"); dx.Put("szKey_float_50", "override_50"); dx.Put("szKey_float_51", "override_51"); dx.Put("szKey_float_52", "override_52"); dx.Put("szKey_float_53", "override_53"); dx.Put("szKey_float_54", "override_54");
+	printf("覆盖第250~254个元素\n"); dx.Put("szKey_string_50", "override_50"); dx.Put("szKey_string_51", "override_51"); dx.Put("szKey_string_52", "override_52"); dx.Put("szKey_string_53", "override_53"); dx.Put("szKey_string_54", "override_54");
 	printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
 
     printf("\n\n");
@@ -66,12 +72,23 @@ int main()
         char szKey[128] = { 0 };
         sprintf(szKey, "szKey_arr_%d", i);
         dx(szKey).Add(100).Add(102.345).Add("hello_array_string_%d", i);
+
+
+		//MemJson mjRef = dx.ToRef();
+		//MemJson mjCpy = dx.Clone();
+
+		//const MemJson& operator=(const MemJson& dx); // Clone,=
+		//MemJson& operator=(const MemJson& dx) const; // ToRef,[],()
+		// 都返回 MemJson，但前者将MemJson::__parent__处理为null，后者将MemJson::__parent__处理为父节点，且两种方法内存做响应初始化
     }
     printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
     printf("获取第1个数组信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx["szKey_arr_1"].Mem(), dx["szKey_arr_1"].Len(), dx["szKey_arr_1"].Cnt());
     for (unsigned int i = 0; i < dx["szKey_arr_1"].Cnt(); i++)
     {
-        printf("\tszKey_arr_1_%d: %s\n", i, dx["szKey_arr_1"].Get(i).S);
+		MemJson::XTY x = dx["szKey_arr_1"].Get(i);
+		if (x.t == 'S') printf("\tszKey_arr_1_%d: %s\n", i, x.S);
+		else if(x.t == 'I') printf("\tszKey_arr_1_%d: %d\n", i, x.I);
+		else if(x.t == 'F') printf("\tszKey_arr_1_%d: %f\n", i, x.F);
     }
     printf("\n\n");
 
