@@ -67,6 +67,7 @@ namespace x2lib
             int I; // 导出为int型
             double F; // 导出为float型
             char *S; // 导出为char*型
+
             friend class MemJson;
 
             int stoI() { return atoi(S); }
@@ -106,10 +107,11 @@ namespace x2lib
 
     public:
         MemJson(); // 初始化为根节点
-        //MemJson(const MemJson& mj, bool mjAsRoot = false); // 初始化为根节点或子节点
+        MemJson(uint32_t mem, uint32_t len);
+        MemJson(const MemJson& mj);
+        MemJson& operator=(MemJson& dx) = delete;
         MemJson& operator=(const MemJson& dx) = delete; // 初始化为根节点
-        MemJson(const char* szKey, const char* szFmt, ...); // 初始化为根节点
-        MemJson(const char* szKey, int nBin, void* pBin); // 初始化为根节点
+        MemJson(const char* szKey, void* pBin, int nBin); // 初始化为根节点
         ~MemJson(); // 构造函数使用了memset，禁止设为virtual
 
 		MemJson(uint32_t mem); // 仅提供给Clone调用；根节点==对象性对象
@@ -121,23 +123,6 @@ namespace x2lib
 		** Author   : faker@2021-4-18 13:22:56
 		*************************************************************************/
 		MemJson(uint64_t parent_mem); // 仅提供给Quote,(),[],=调用；子节点==引用型对象
-		//MemJson& operator=(uint32_t mem);
-
-		/*************************************************************************
-		** Desc     : 将当前节点（可以是子节点或根节点）克隆为一个根节点
-		** Param    : [in]
-		** Return   : 返回一个对象型MemJson对象
-		** Author   : faker@2021-4-18 13:22:56
-		*************************************************************************/
-		MemJson Clone();
-
-		/*************************************************************************
-		** Desc     : 返回当前节点（可以是子节点或根节点）的引用，具有时效性，若原对象发生改变则失效
-		** Param    : [in]
-		** Return   : 返回一个引用型MemJson对象
-		** Author   : faker@2021-4-18 13:20:27
-		*************************************************************************/
-		MemJson Quote();
 
 		bool IsRoot() const;
 
@@ -155,16 +140,18 @@ namespace x2lib
         MemJson& Put(const char* szKey, bool bVal);
         MemJson& Put(const char* szKey, int iVal);
         MemJson& Put(const char* szKey, double dVal);
-        MemJson& Put(const char* szKey, const char* szFmt, ...); // 当szFmt=nullptr时添加一个名为szKey的null元素
-        MemJson& Put(const char* szKey, uint32_t nBin, void* pBin);
+        MemJson& Put(const char* szKey, char* sVal); // 当szFmt=nullptr时添加一个名为szKey的null元素
+		MemJson& Puts(const char* szKey, const char* szFmt, ...);
+        MemJson& Put(const char* szKey, void* pBin, uint32_t nBin);
         MemJson& Put(const char* szKey, MemJson& dx);
 
         // 用于添加数组元素，所有Add都返回当前MemJson对象
         MemJson& Add(bool bVal);
         MemJson& Add(int iVal);
         MemJson& Add(double dVal);
-        MemJson& Add(const char* szFmt, ...); // 当szFmt=nullptr时添加一个null元素
-        MemJson& Add(uint32_t nBin, void* pBin);
+		MemJson& Add(char* sVal); // 当szFmt=nullptr时添加一个null元素
+		MemJson& Adds(const char* szFmt, ...);
+        MemJson& Add(void* pBin, uint32_t nBin);
         MemJson& Add(MemJson& dx);
 
         /*************************************************************************
@@ -252,6 +239,8 @@ namespace x2lib
 
         bool IsValid();
 
+        bool Build(void* pMem, int nLen); // 仅供构造函数调用（仅供根节点使用）
+
 #if __SUPPORT_STD_JSON__
         /*************************************************************************
         ** Desc     : 将json字符串转为DatX
@@ -275,7 +264,6 @@ namespace x2lib
 #endif
     protected:
 		void init();
-		//bool build(void* pMem, int nLen); // 仅供构造函数调用（仅供根节点使用）
 
         /*************************************************************************
         ** Desc     : 只能尝试判断是否有效，且操作不当有可能会造成崩溃，最好使用win最好使用IsBadReadPtr判断
@@ -299,7 +287,7 @@ namespace x2lib
         *************************************************************************/
         void move_memory(uint32_t* p_mem, uint32_t len, uint32_t xlen);
         MemJson& _Put(const char* szKey, const char* szFmt, va_list body);
-		uint32_t __Put(const char* szKey, char t, uint32_t nBin, void* pBin);
+		uint32_t __Put(const char* szKey, char t, void* pBin, uint32_t nBin);
 
         static const uint32_t COB = 1024; // 内存增长最小值
         static const uint32_t GC_SIZE = COB * 4; // 内存回收最小值

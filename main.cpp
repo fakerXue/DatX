@@ -5,23 +5,6 @@ using namespace x2lib;
 int main()
 {
     MemJson dx;
-	{
-		const char *pJson01 = R"({"aaa":521,"bbb":13.14,"ccc":"hello"})";
-		const char *pJson02 = R"(["elem0","elem1","elem2"])";
-		const char *pJson03 = R"({"aaa":521,"bbb":13.14,"ccc":"hello","ddd":["elem0","elem1","elem2"]})";
-
-		MemJson dx1 = dx.Quote();
-		dx1.Parse(pJson01);
-		dx1("ccc").Parse(pJson03);
-
-		char szJson[1024] = { 0 };
-		dx.Print(szJson, 2048, false);
-		dx1.Del("ccc");
-		dx.Del("aaa"); // 所有Quote均失效
-		dx.Print(szJson, 2048, false);
-		printf("\t[MemJson->Json]: \n%s\n", szJson);
-		printf("\t[MemJson->Json]: \n%s\n", szJson);
-	}
 
     printf("添加100个int元素，100个double元素，100个string元素：\n");
     for (int i = 0; i < 100; i++)
@@ -40,7 +23,7 @@ int main()
     {
         char szKey[128] = { 0 };
         sprintf(szKey, "szKey_string_%d", i);
-        dx.Put(szKey, "%s_%d", "hello_string", i);
+        dx.Puts(szKey, "%s_%d", "hello_string", i);
     }
 
     printf("添加完成，打印结果：\n");
@@ -71,7 +54,7 @@ int main()
     {
         char szKey[128] = { 0 };
         sprintf(szKey, "szKey_arr_%d", i);
-        dx(szKey).Add(100).Add(102.345).Add("hello_array_string_%d", i);
+        dx(szKey).Add(100).Add(102.345).Adds("hello_array_string_%d", i);
 
 
 		//MemJson mjRef = dx.ToRef();
@@ -104,20 +87,20 @@ int main()
     printf("\n\n");
 
     printf("向根节点连续添加键值对[Put]：int,float,string,binary\n");
-    dx.Put("szKey_Puts_int", 123).Put("szKey_Puts_float", 13.14).Put("szKey_Puts_string", "hello_Puts").Put("szKey_Puts_Binary1024", 1024, malloc(1024));
+    dx.Put("szKey_Puts_int", 123).Put("szKey_Puts_float", 13.14).Put("szKey_Puts_string", "hello_Puts").Put("szKey_Puts_Binary1024", malloc(1024), 1024);
     printf("\t打印：%d,%f,%s,[0x%08X,%d]\n", dx.Get("szKey_Puts_int").I, dx.Get("szKey_Puts_float").F, dx.Get("szKey_Puts_string").S, dx.Get("szKey_Puts_Binary1024").v, dx.Get("szKey_Puts_Binary1024").n);
     printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
     printf("\n\n");
 
     printf("向根节点连续添加数组元素[Add]：int,float,string,binary\n");
     int index0 = dx.Cnt();
-    dx.Add(123).Add(13.14).Add("hello_Adds").Add(1024, malloc(1024));
+    dx.Add(123).Add(13.14).Add("hello_Adds").Add(malloc(1024), 1024);
     printf("\t打印：%d,%f,%s,[0x%08X,%d]\n", dx.Get(index0).I, dx.Get(index0 + 1).F, dx.Get(index0 + 2).S, dx.Get(index0 + 3).v, dx.Get(index0 + 3).n);
     printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
     printf("\n\n");
 
     printf("向根节点添加一个含有4个键值对元素的子节点[使用()自动创建子节点]：int,float,string,binary\n");
-    dx("szKey_Puts").Put("szKey_Puts_int", 123).Put("szKey_Puts_float", 13.14).Put("szKey_Puts_string", "hello_Puts").Put("szKey_Puts_Binary1024", 1024, malloc(1024));
+    dx("szKey_Puts").Put("szKey_Puts_int", 123).Put("szKey_Puts_float", 13.14).Put("szKey_Puts_string", "hello_Puts").Put("szKey_Puts_Binary1024", malloc(1024), 1024);
     MemJson dxPuts = dx["szKey_Puts"];
     printf("\t打印子节点[szKey_Puts]：%d,%f,%s,[0x%08X,%d]\n", dxPuts.Get("szKey_Puts_int").I, dxPuts.Get("szKey_Puts_float").F, dxPuts.Get("szKey_Puts_string").S, dxPuts.Get("szKey_Puts_Binary1024").v, dxPuts.Get("szKey_Puts_Binary1024").n);
     printf("\t根节点内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", dx.Mem(), dx.Len(), dx.Cnt());
@@ -125,7 +108,7 @@ int main()
 
     printf("向根节点添加一个含有4个数组元素的子节点[使用Put创建子节点]：int,float,string,binary\n");
     MemJson dxNode;
-    dxNode.Add(123).Add(13.14).Add("hello_Adds").Add(1024, malloc(1024));
+    dxNode.Add(123).Add(13.14).Add("hello_Adds").Add(malloc(1024), 1024);
     dx.Put("szKey_Adds", dxNode);
     MemJson dxAdds = dx["szKey_Adds"];
     printf("\t打印子节点[szKey_Adds]：%d,%f,%s,[0x%08X,%d]\n", dxAdds.Get(0U).I, dxAdds.Get(1).F, dxAdds.Get(2).S, dxAdds.Get(3).v, dxAdds.Get(3).n);
@@ -198,8 +181,8 @@ int main()
         MemJson dx0;
         dx0.Add("elem0").Add("elem1").Add("elem2");
         memJson.Add(dx0);
-        memJson.Add(1024, malloc(1024));
-        memJson.Put("binary_key", 2048, malloc(2048));
+        memJson.Add(malloc(1024), 1024);
+        memJson.Put("binary_key", malloc(2048), 2048);
         memJson.Print(szJson, sizeof(szJson), true, true);
         printf("直接由MemJson转“Json”:\n%s\n", szJson);
         printf("\t内存信息：内存起始[0x%08X]，内存大小[%d B]，元素个数[%d]\n", memJson.Mem(), memJson.Len(), memJson.Cnt());
